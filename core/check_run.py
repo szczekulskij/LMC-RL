@@ -32,7 +32,7 @@ REPLAY_CAPACITY = 1000000      # capacity of replay buffer
 
 def train_agent_on_env(agent_class, env_name, seed):
     """Train a given agent (SAC or DDPG) on a specific environment for NUM_EPISODES. 
-       Returns the list of episode rewards collected during training."""
+       Returns the list of episode rewards and cumulative elapsed times."""
     # Create environment and set seed
     env = gym.make(env_name)
     set_seed(seed, env)
@@ -43,22 +43,25 @@ def train_agent_on_env(agent_class, env_name, seed):
     agent = agent_class(obs_dim, act_dim, device=device)  # assuming agent constructor takes obs/act dimensions
     # Alternatively, agent could internally handle env spaces. Adjust as per actual implementation.
     
-    # Initialize replay buffer
-    replay_buffer = ReplayBuffer(capacity=REPLAY_CAPACITY)
+    # Initialize replay buffer with state and action dimensions
+    replay_buffer = ReplayBuffer(state_dim=obs_dim, action_dim=act_dim, capacity=REPLAY_CAPACITY)
     
     episode_rewards = []  # to log rewards per episode
+    cumulative_times = []  # to log cumulative elapsed time per episode
+    start_time = time.time()  # Start timing
+
     for episode in range(1, NUM_EPISODES+1):
-        state = env.reset()
+        state, _ = env.reset()  # Updated to unpack reset output
         episode_reward = 0.0
         done = False
         step = 0
         
         while not done and step < MAX_STEPS_PER_EPISODE:
-            # Choose action from agent (with exploration). Assume agent has a method select_action().
-            action = agent.select_action(state)  # returns a NumPy array or list compatible with env action space
-            # (Ensure the agent.select_action uses exploration noise internally for DDPG, stochastic sampling for SAC)
+            # Use get_action instead of select_action
+            action = agent.get_action(state)  # returns a NumPy array or list compatible with env action space
             
-            next_state, reward, done, info = env.step(action)
+            next_state, reward, terminated, truncated, info = env.step(action)
+            done = terminated or truncated
             episode_reward += reward
             
             # Store transition in replay buffer
@@ -66,14 +69,13 @@ def train_agent_on_env(agent_class, env_name, seed):
             
             # Update agent's networks (if enough samples are available in buffer)
             if len(replay_buffer) >= BATCH_SIZE:
-                agent.update(replay_buffer, batch_size=BATCH_SIZE)
-                # The agent.update method should sample from the replay buffer and do a gradient update.
-                # We assume this method exists in the agent class from the project structure.
+                agent.train_step(replay_buffer, batch_size=BATCH_SIZE)  # Ensure train_step is used
             
             state = next_state
             step += 1
         
         episode_rewards.append(episode_reward)
+        cumulative_times.append(time.time() - start_time)  # Record cumulative elapsed time
         
         # (Optional) Print or log the reward for this episode
         print(f"[{agent_class.__name__} | {env_name} | Seed {seed}] Episode {episode}: Reward = {episode_reward:.2f}")
@@ -92,28 +94,51 @@ def train_agent_on_env(agent_class, env_name, seed):
     print(f"Saved model to {model_filename}")
     
     env.close()
-    return episode_rewards
+    return episode_rewards, cumulative_times
 
 
+import time  # Import time module for wall clock measurement
 import matplotlib.pyplot as plt
 
 # Main loop to run experiments
-for algo_name, agent_class in ALGOS.items():
-    for env_name in ENV_NAMES:
-        for seed in range(NUM_SEEDS):
+for env_name in ENV_NAMES:
+    fig, axes = plt.subplots(2, NUM_SEEDS, figsize=(15, 10))  # 2 rows (one per algo), NUM_SEEDS columns
+    fig.suptitle(f"Training Results for {env_name} (Rewards)", fontsize=16)
+
+    time_fig, time_axes = plt.subplots(2, NUM_SEEDS, figsize=(15, 10))  # Separate figure for wall clock time
+    time_fig.suptitle(f"Training Results for {env_name} (Wall Clock Time)", fontsize=16)
+
+    for row, (algo_name, agent_class) in enumerate(ALGOS.items()):
+        for col, seed in enumerate(range(NUM_SEEDS)):
             print(f"\n=== Training {algo_name} on {env_name} (seed={seed}) ===")
-            # Train the agent and get episode rewards log
-            rewards = train_agent_on_env(agent_class, env_name, seed)
+            rewards, cumulative_times = train_agent_on_env(agent_class, env_name, seed)
             
-            # Plot the reward curve for this run
-            plt.figure()
-            plt.plot(rewards, label=f'Seed {seed}')
-            plt.title(f"{algo_name} on {env_name} (Seed {seed})")
-            plt.xlabel("Episode")
-            plt.ylabel("Total Reward")
-            plt.legend()
-            # Save plot to disk
-            plot_filename = f"{algo_name}_{env_name}_seed{seed}_reward_curve.png"
-            plt.savefig(plot_filename)
-            plt.close()
-            print(f"Saved reward plot to {plot_filename}")
+            # Plot the reward curve in the corresponding subplot
+            ax = axes[row, col]
+            ax.plot(rewards, label=f'Seed {seed}')
+            ax.set_title(f"{algo_name} (Seed {seed})")
+            ax.set_xlabel("Episode")
+            ax.set_ylabel("Total Reward")
+            ax.legend()
+
+            # Plot the cumulative elapsed time in the corresponding subplot
+            time_ax = time_axes[row, col]
+            time_ax.plot(range(len(cumulative_times)), cumulative_times, label=f'Seed {seed}')
+            time_ax.set_title(f"{algo_name} (Seed {seed})")
+            time_ax.set_xlabel("Episode")
+            time_ax.set_ylabel("Wall Clock Time (s)")
+            time_ax.legend()
+
+    # Adjust layout and save the combined reward plot
+    plt.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for the suptitle
+    reward_plot_filename = f"{env_name}_combined_reward_plot.png"
+    plt.savefig(reward_plot_filename)
+    plt.close()
+    print(f"Saved combined reward plot to {reward_plot_filename}")
+
+    # Adjust layout and save the combined time plot
+    plt.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for the suptitle
+    time_plot_filename = f"{env_name}_combined_time_plot.png"
+    time_fig.savefig(time_plot_filename)
+    plt.close(time_fig)
+    print(f"Saved combined time plot to {time_plot_filename}")

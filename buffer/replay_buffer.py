@@ -47,3 +47,7 @@ class ReplayBuffer:
         next_state_batch = torch.tensor(self.next_states[batch_indices], dtype=torch.float32)
         done_batch = torch.tensor(self.dones[batch_indices], dtype=torch.float32).unsqueeze(1)
         return state_batch, action_batch, reward_batch, next_state_batch, done_batch
+
+    def __len__(self):
+        """Return the current size of the replay buffer."""
+        return self.size

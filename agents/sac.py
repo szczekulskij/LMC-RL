@@ -4,17 +4,19 @@ import torch.nn.functional as F
 
 class SACAgent:
     def __init__(self, state_dim, action_dim, actor_lr=3e-4, critic_lr=3e-4,
-                 alpha=0.2, gamma=0.99, tau=0.005):
+                 alpha=0.2, gamma=0.99, tau=0.005, device='cpu'):
         self.gamma = gamma
         self.tau = tau
         self.alpha = alpha
+        self.device = device  # Store the device
+
         # Networks
-        self.actor = ActorSAC(state_dim, action_dim)
-        self.critic1 = Critic(state_dim, action_dim)
-        self.critic2 = Critic(state_dim, action_dim)
+        self.actor = ActorSAC(state_dim, action_dim).to(self.device)
+        self.critic1 = Critic(state_dim, action_dim).to(self.device)
+        self.critic2 = Critic(state_dim, action_dim).to(self.device)
         # Target critics
-        self.target_critic1 = Critic(state_dim, action_dim)
-        self.target_critic2 = Critic(state_dim, action_dim)
+        self.target_critic1 = Critic(state_dim, action_dim).to(self.device)
+        self.target_critic2 = Critic(state_dim, action_dim).to(self.device)
         self.target_critic1.load_state_dict(self.critic1.state_dict())
         self.target_critic2.load_state_dict(self.critic2.state_dict())
         # Optimizers
@@ -25,7 +27,7 @@ class SACAgent:
     
     def get_action(self, state, deterministic=False):
         """Sample an action from the policy. If deterministic=True, return the mean action (for evaluation)."""
-        state_t = torch.tensor(state, dtype=torch.float32)
+        state_t = torch.tensor(state, dtype=torch.float32).to(self.device)
         mean, log_std = self.actor(state_t)
         if deterministic:
             # Simply take mean and apply tanh (no randomness) for evaluation
@@ -41,6 +43,10 @@ class SACAgent:
     def train_step(self, replay_buffer, batch_size=256):
         """One SAC training step on a batch."""
         states, actions, rewards, next_states, dones = replay_buffer.sample(batch_size)
+        states, actions, rewards, next_states, dones = (
+            states.to(self.device), actions.to(self.device), rewards.to(self.device),
+            next_states.to(self.device), dones.to(self.device)
+        )
         # Sample action from current policy for next_states, for computing target Q
         with torch.no_grad():
             next_mean, next_log_std = self.actor(next_states)

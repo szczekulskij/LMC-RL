@@ -2,15 +2,17 @@ from agents.networks import ActorDDPG, Critic
 import torch
 
 class DDPGAgent:
-    def __init__(self, state_dim, action_dim, actor_lr=1e-3, critic_lr=1e-3, gamma=0.99, tau=0.005):
+    def __init__(self, state_dim, action_dim, actor_lr=1e-3, critic_lr=1e-3, gamma=0.99, tau=0.005, device='cpu'):
         self.gamma = gamma
         self.tau = tau
+        self.device = device  # Store the device
+
         # Networks
-        self.actor = ActorDDPG(state_dim, action_dim)
-        self.critic = Critic(state_dim, action_dim)
+        self.actor = ActorDDPG(state_dim, action_dim).to(self.device)
+        self.critic = Critic(state_dim, action_dim).to(self.device)
         # Target networks (start as clones of the originals)
-        self.target_actor = ActorDDPG(state_dim, action_dim)
-        self.target_critic = Critic(state_dim, action_dim)
+        self.target_actor = ActorDDPG(state_dim, action_dim).to(self.device)
+        self.target_critic = Critic(state_dim, action_dim).to(self.device)
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.target_critic.load_state_dict(self.critic.state_dict())
         # Optimizers
@@ -21,11 +23,11 @@ class DDPGAgent:
     
     def get_action(self, state, noise=True):
         """Select an action for a given state, with optional exploration noise."""
-        state_t = torch.tensor(state, dtype=torch.float32)
+        state_t = torch.tensor(state, dtype=torch.float32).to(self.device)
         a = self.actor(state_t)
         if noise:
             # Add Gaussian noise for exploration, and clip to [-1, 1]
-            a = a + torch.normal(mean=0.0, std=self.noise_std, size=a.shape)
+            a = a + torch.normal(mean=0.0, std=self.noise_std, size=a.shape).to(self.device)
             a = torch.clamp(a, -1.0, 1.0)
         return a.detach().cpu().numpy()
     
@@ -33,6 +35,10 @@ class DDPGAgent:
         """Perform one training update (on one batch of data)."""
         # Sample a batch of transitions
         states, actions, rewards, next_states, dones = replay_buffer.sample(batch_size)
+        states, actions, rewards, next_states, dones = (
+            states.to(self.device), actions.to(self.device), rewards.to(self.device),
+            next_states.to(self.device), dones.to(self.device)
+        )
         # Compute target Q value: r + gamma * Q_target(s', \pi_target(s')) * (1 - done)
         with torch.no_grad():
             target_actions = self.target_actor(next_states)

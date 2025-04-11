@@ -6,6 +6,7 @@ brotlipy @ file:///Users/runner/miniforge3/conda-bld/brotlipy_1666764759924/work
 certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1707022139797/work/certifi
 cffi @ file:///Users/runner/miniforge3/conda-bld/cffi_1671179893800/work
 charset-normalizer @ file:///home/conda/feedstock_root/build_artifacts/charset-normalizer_1661170624537/work
+cloudpickle==3.1.1
 colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1666700638685/work
 comm @ file:///home/conda/feedstock_root/build_artifacts/comm_1691044910542/work
 conda==22.11.1
@@ -18,10 +19,12 @@ debugpy @ file:///Users/runner/miniforge3/conda-bld/debugpy_1695534362840/work
 decorator @ file:///home/conda/feedstock_root/build_artifacts/decorator_1641555617451/work
 exceptiongroup @ file:///home/conda/feedstock_root/build_artifacts/exceptiongroup_1700579780973/work
 executing @ file:///home/conda/feedstock_root/build_artifacts/executing_1698579936712/work
+Farama-Notifications==0.0.4
 filelock @ file:///home/conda/feedstock_root/build_artifacts/filelock_1714422806336/work
 fonttools==4.56.0
 fsspec @ file:///home/conda/feedstock_root/build_artifacts/fsspec_1715865800631/work
 gmpy2 @ file:///Users/runner/miniforge3/conda-bld/gmpy2_1715527354984/work
+gymnasium==1.1.1
 huggingface-hub==0.29.2
 idna @ file:///home/conda/feedstock_root/build_artifacts/idna_1663625384323/work
 importlib-metadata @ file:///home/conda/feedstock_root/build_artifacts/importlib-metadata_1701459350360/work

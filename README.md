@@ -5,7 +5,7 @@ Researching Linear Mode Connectivity in RL
 ```
 lmc_rl/
 ├── agents/
-│   ├── base.py              # Common interfaces / utilities (optional)
+│   ├── base.py              # Common interfaces / utilities (optional) #TODO: Remove this post migration
 │   ├── sac.py               # SACAgent class and SAC components
 │   ├── ddpg.py              # DDPGAgent class and DDPG components
 │   ├── networks.py          # Shared neural nets (ActorDDPG, ActorSAC, Critic)

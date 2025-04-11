@@ -1,7 +1,8 @@
 # LMC-RL
 Researching Linear Mode Connectivity in RL
 
-# Repo structure
+## 📁 Repo structure
+```
 lmc_rl/
 ├── agents/
 │   ├── base.py              # Common interfaces / utilities (optional)
@@ -32,8 +33,9 @@ lmc_rl/
 │
 ├── results/                 # Saved interpolation metrics (e.g., JSON/CSV/plots)
 │
-├── requirements_metal.txt         # All Python dependencies (PyTorch for metal)
+├── requirements_metal.txt   # All Python dependencies (PyTorch for metal)
 └── README.md                # Project overview and usage instructions
+```
 
 
 # Self-notes

@@ -1,13 +1,13 @@
 import copy
-import gym
+import gymnasium as gym
 import torch
 import torch.nn as nn
 import numpy as np
 from agents.sac import SACAgent
 from agents.ddpg import DDPGAgent
 from agents.networks import ActorSAC, ActorDDPG
-from replay_buffer import ReplayBuffer
-from utils import set_seed  # if a utility function is available
+from buffer.replay_buffer import ReplayBuffer
+from utils.seed import set_seed  # if a utility function is available
 # Device configuration: use MPS if available (on Apple silicon Macs)
 device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
 print(f"Using device: {device}")
@@ -52,19 +52,19 @@ def evaluate_policy(actor: nn.Module, env, episodes: int = 5):
 
 
 # Example usage underneath (the code doesn't run, just for illustration):
-if __name__ == "__impossibleu__":
-    if algorithm == "DDPG":
-        actorA = branch_A.actor
-        actorB = branch_B.actor
-    else:
-        actorA = branch_A.actor
-        actorB = branch_B.actor
+# if __name__ == "__impossibleu__":
+#     if algorithm == "DDPG":
+#         actorA = branch_A.actor
+#         actorB = branch_B.actor
+#     else:
+#         actorA = branch_A.actor
+#         actorB = branch_B.actor
 
-    # Use a fresh environment for evaluation (to avoid training environment state)
-    eval_env = gym.make(env_name)
-    set_seed(eval_env, 123)  # seed eval environment for consistency
-    alphas = [0.0, 0.25, 0.5, 0.75, 1.0]
-    for alpha in alphas:
-        interp_actor = interpolate_policy(actorA, actorB, alpha)
-        avg_return = evaluate_policy(interp_actor, eval_env, episodes=10)
-        print(f"Interpolation {alpha:.2f}: Average Return = {avg_return:.2f}")
+#     # Use a fresh environment for evaluation (to avoid training environment state)
+#     eval_env = gym.make(env_name)
+#     set_seed(eval_env, 123)  # seed eval environment for consistency
+#     alphas = [0.0, 0.25, 0.5, 0.75, 1.0]
+#     for alpha in alphas:
+#         interp_actor = interpolate_policy(actorA, actorB, alpha)
+#         avg_return = evaluate_policy(interp_actor, eval_env, episodes=10)
+#         print(f"Interpolation {alpha:.2f}: Average Return = {avg_return:.2f}")

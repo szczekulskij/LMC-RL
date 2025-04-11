@@ -40,6 +40,7 @@ lmc_rl/
 
 # Self-notes
 * `conda activate /Users/szczekulskij/miniforge3/envs/ml_fo_robotics` to activate my env
+* To run check: `python -m core.check_run`
 
 
 # TODOs

@@ -3,13 +3,14 @@
 import torch
 import numpy as np
 import random
-import gym
+import gymnasium as gym
 # Import our previously defined classes (SACAgent, DDPGAgent, ReplayBuffer, evaluate_policy, etc.)
 from agents.ddpg import DDPGAgent
 from agents.sac import SACAgent
 from agents.networks import ActorSAC, Critic
-from replay_buffer import ReplayBuffer
-from core.evaluate import evaluate_policy  # if an evaluation function is available
+from buffer.replay_buffer import ReplayBuffer
+from core.evaluate import evaluate_policy  
+from utils.seed import set_seed  
 
 # Device configuration: use MPS if available (on Apple silicon Macs)
 device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
@@ -18,7 +19,7 @@ print(f"Using device: {device}")  # e.g., prints "Using device: mps" on an M1/M2
 
 # Configuration
 NUM_SEEDS = 3  # number of random seed trials (can adjust for more/less)
-ENV_NAMES = ["HalfCheetah-v3", "Hopper-v3"]
+ENV_NAMES = ["HalfCheetah-v5", "Hopper-v5"]
 ALGOS = {
     "SAC": SACAgent,    # agent classes defined elsewhere
     "DDPG": DDPGAgent
@@ -28,22 +29,13 @@ MAX_STEPS_PER_EPISODE = 1000   # max steps per episode (typical for MuJoCo envs)
 BATCH_SIZE = 256               # batch size for agent updates
 REPLAY_CAPACITY = 1000000      # capacity of replay buffer
 
-def set_random_seed(seed, env=None):
-    """Utility to set all relevant random seeds for reproducibility."""
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if env is not None:
-        env.seed(seed)
-        env.action_space.seed(seed)
-
 
 def train_agent_on_env(agent_class, env_name, seed):
     """Train a given agent (SAC or DDPG) on a specific environment for NUM_EPISODES. 
        Returns the list of episode rewards collected during training."""
     # Create environment and set seed
     env = gym.make(env_name)
-    set_random_seed(seed, env)
+    set_seed(seed, env)
     
     # Initialize agent (with environment info and device)
     obs_dim = env.observation_space.shape[0]
@@ -87,9 +79,9 @@ def train_agent_on_env(agent_class, env_name, seed):
         print(f"[{agent_class.__name__} | {env_name} | Seed {seed}] Episode {episode}: Reward = {episode_reward:.2f}")
         
         # (Optional) Evaluate periodically using evaluation logic if available
-        # if episode % 50 == 0:
-        #     eval_reward = evaluate_policy(agent, env_name)  # hypothetical evaluation function
-        #     print(f"Evaluation reward (episode {episode}): {eval_reward:.2f}")
+        if episode % 50 == 0:
+            eval_reward = evaluate_policy(agent, env_name)  # hypothetical evaluation function
+            print(f"Evaluation reward (episode {episode}): {eval_reward:.2f}")
     
     # Save the final trained model to disk
     model_filename = f"{agent_class.__name__}_{env_name}_seed{seed}.pt"

@@ -51,6 +51,49 @@ def evaluate_policy(actor: nn.Module, env, episodes: int = 5):
     return avg_return
 
 
+def linear_interpolation_weights(model1, model2, alpha):
+    """
+    Create a new model with weights interpolated between model1 and model2.
+    
+    Args:
+        model1: The first model
+        model2: The second model
+        alpha: Interpolation factor (0 = model1, 1 = model2)
+        
+    Returns:
+        A new model with interpolated weights
+    """
+    interpolated_model = copy.deepcopy(model1)
+    
+    model1_state_dict = model1.state_dict()
+    model2_state_dict = model2.state_dict()
+    
+    with torch.no_grad():
+        for key in model1_state_dict:
+            if torch.is_tensor(model1_state_dict[key]):
+                interpolated_model.state_dict()[key].copy_(
+                    alpha * model1_state_dict[key] + (1 - alpha) * model2_state_dict[key]
+                )
+    
+    return interpolated_model
+
+def linear_interpolation_policy(agent1, agent2, alpha, env, num_episodes=10):
+    """
+    Evaluates a policy with weights interpolated between two agents.
+    
+    Args:
+        agent1: The first agent
+        agent2: The second agent
+        alpha: Interpolation factor (0 = agent1, 1 = agent2)
+        env: The environment to evaluate on
+        num_episodes: Number of episodes to evaluate
+        
+    Returns:
+        List of rewards for each episode
+    """
+    interpolated_agent = linear_interpolation_weights(agent1, agent2, alpha)
+    return evaluate_policy(interpolated_agent, env, num_episodes)
+
 # Example usage underneath (the code doesn't run, just for illustration):
 # if __name__ == "__impossibleu__":
 #     if algorithm == "DDPG":

@@ -51,3 +51,8 @@ class ReplayBuffer:
     def __len__(self):
         """Return the current size of the replay buffer."""
         return self.size
+    
+    def set_seed(self, seed: int):
+        """Set the random seed for reproducibility."""
+        np.random.seed(seed)
+        torch.manual_seed(seed)

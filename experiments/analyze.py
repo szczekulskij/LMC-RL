@@ -9,12 +9,22 @@ from glob import glob
 
 
 def load_fork_files(forks_dir):
+    """Load all fork result JSON files from the specified directory."""
     fork_files = sorted(glob(os.path.join(forks_dir, "instability_*.json")))
+    print(f"Searching for fork files in: {forks_dir}")
+    print(f"Found fork files: {fork_files}")
+
     all_results = []
     for file in fork_files:
         with open(file, 'r') as f:
             data = json.load(f)
-            data['fork_step'] = int(file.split('_')[-1].split('.')[0])  # assumes fork_id == fork_step
+            # Extract fork step from the filename (e.g., instability_1.json -> fork_step = 1)
+            try:
+                fork_step = int(os.path.basename(file).split('_')[-1].split('.')[0])
+                data['fork_step'] = fork_step
+            except ValueError:
+                print(f"Warning: Could not extract fork step from filename: {file}")
+                continue
             all_results.append(data)
     return all_results
 

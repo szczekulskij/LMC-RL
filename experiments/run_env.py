@@ -14,11 +14,11 @@ from agents.sac import SACAgent
 from buffer.replay_buffer import ReplayBuffer
 from core.evaluate import evaluate_policy, linear_interpolation_policy
 from utils.seed import set_seed
+import random
 
-# DEFAULT_TOTAL_STEPS = 5e5
-DEFAULT_TOTAL_STEPS = 5e4 //20 # For testing purposes, set to 25k steps
+DEFAULT_TOTAL_STEPS = 5e5 //10 # based on my few runs, it trains too on invertedPentulum fast, so I set it to 1/10th of the original
 DEFAULT_BUFFER_SIZE = 1e6
-DEFAULT_EVAL_FREQ = 5000
+DEFAULT_EVAL_FREQ = 1000
 DEFAULT_MAX_EPISODE_STEPS = 1000
 
 
@@ -28,7 +28,7 @@ def parse_args():
                         help='Gymnasium environment name')
     parser.add_argument('--algo', type=str, default='SAC', choices=['SAC', 'DDPG'],
                         help='RL algorithm to use')
-    parser.add_argument('--seed', type=int, default=0, help='Random seed')
+    parser.add_argument('--seed', type=int, default=random.randint(1, 1000000), help='Random seed')
     parser.add_argument('--total_steps', type=int, default=DEFAULT_TOTAL_STEPS, 
                         help='Total training steps')
     parser.add_argument('--eval_freq', type=int, default=DEFAULT_EVAL_FREQ, 
@@ -127,6 +127,8 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         # Print progress for fork 1
         if step % (train_steps // 10) == 0:  # Print every 10% of progress
             print(f"Fork 1 (ID: {fork_id}): {step / train_steps:.1%} completed")
+            evaluation_rewards = evaluate_policy(fork1_agent, fork1_env, episodes=3)
+            print(f"Fork 1 (ID: {fork_id}) evaluation reward: {np.mean(evaluation_rewards):.3f}")
     
     # Train fork 2 (similar to fork 1 but with different seed)
     set_seed(fork2_seed)
@@ -156,6 +158,8 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         # Print progress for fork 2
         if step % (train_steps // 10) == 0:  # Print every 10% of progress
             print(f"Fork 2 (ID: {fork_id}): {step / train_steps:.1%} completed")
+            rewards_eval = evaluate_policy(fork2_agent, fork2_env, episodes=3)
+            print(f"Fork 2 (ID: {fork_id}) evaluation reward: {np.mean(rewards_eval):.3f}")
     
     # Save the final weights
     fork1_path = f"{weights_dir}/fork1_{fork_id}.pt"
@@ -314,13 +318,11 @@ def main():
         # print number of steps every 1% of total steps
         if t % (args.total_steps // 100) == 0:
             print(f"Step {t}: {t / args.total_steps:.1%} of all (non-forked) run completed")
-        
-        # Evaluate agent
-        if t % args.eval_freq == 0:
+            
+        # Save evaluation results
+        if t % (args.total_steps // 100) == 0:
             eval_rewards = evaluate_policy(agent, gym.make(args.env), episodes=10)
             print(f"Step {t}: Evaluation over 10 episodes: {np.mean(eval_rewards):.3f}")
-            
-            # Save evaluation results
             with open(f"{exp_dir}/evaluations/step_{t}.json", 'w') as f:
                 json.dump({
                     'step': t,

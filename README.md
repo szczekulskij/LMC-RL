@@ -53,4 +53,4 @@ lmc_rl/
 
 ## TODOs
 * Add "normal" requirements
-* Clean requirements for metal (it includes my rqs for ml for robotics class project, could be cleaner)
+* Clean requirements for metal (it includes my reqs for ml for robotics class project, could be cleaner)

@@ -26,14 +26,14 @@ ALGOS = {
     "SAC": SACAgent,    # agent classes defined elsewhere
     "DDPG": DDPGAgent
 }
-# NUM_EPISODES = 500             # training episodes per run (configurable)
-# NUM_EVAL_EPISODES = 50          # evaluation episodes (for logging)
-NUM_EPISODES = 10             # training episodes per run (configurable)
-NUM_EVAL_EPISODES = 3          # evaluation episodes (for logging)
+NUM_EPISODES = 750             # training episodes per run (configurable)
+NUM_EVAL_EPISODES = 50          # evaluation episodes (for logging)
+# NUM_EPISODES = 10             # training episodes per run (configurable)
+# NUM_EVAL_EPISODES = 3          # evaluation episodes (for logging)
 
 
 
-MAX_STEPS_PER_EPISODE = 1000   # max steps per episode (typical for MuJoCo envs)
+MAX_STEPS_PER_EPISODE = 100   # max steps per episode (typical for MuJoCo envs)
 BATCH_SIZE = 256               # batch size for agent updates
 REPLAY_CAPACITY = 1000000      # capacity of replay buffer
 

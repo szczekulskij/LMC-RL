@@ -2,12 +2,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
-# Common hidden layer sizes for MuJoCo agents
-HIDDEN_DIMS = (256, 256)
-
 class ActorDDPG(nn.Module):
     """Deterministic policy network for DDPG (outputs action mean directly)."""
-    def __init__(self, state_dim, action_dim, hidden_dims=HIDDEN_DIMS):
+    def __init__(self, state_dim, action_dim, hidden_dims=(256, 256)):
         super().__init__()
         dims = [state_dim] + list(hidden_dims)
         layers = []
@@ -22,7 +19,7 @@ class ActorDDPG(nn.Module):
 
 class ActorSAC(nn.Module):
     """Stochastic policy network for SAC (outputs mean and log-std of Gaussian)."""
-    def __init__(self, state_dim, action_dim, hidden_dims=HIDDEN_DIMS, log_std_bounds=(-20, 2)):
+    def __init__(self, state_dim, action_dim, hidden_dims=(256, 256), log_std_bounds=(-20, 2)):
         super().__init__()
         self.log_std_min, self.log_std_max = log_std_bounds
         dims = [state_dim] + list(hidden_dims)
@@ -44,7 +41,7 @@ class ActorSAC(nn.Module):
 
 class Critic(nn.Module):
     """Q-value network: approximates Q(s,a)."""
-    def __init__(self, state_dim, action_dim, hidden_dims=HIDDEN_DIMS):
+    def __init__(self, state_dim, action_dim, hidden_dims=(256, 256)):
         super().__init__()
         input_dim = state_dim + action_dim
         dims = [input_dim] + list(hidden_dims)

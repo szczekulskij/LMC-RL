@@ -1,28 +1,34 @@
+import yaml  # Add this import
 from agents.networks import ActorSAC, Critic
 import torch
 import torch.nn.functional as F
 
 class SACAgent:
-    def __init__(self, state_dim, action_dim, actor_lr=3e-4, critic_lr=3e-4,
-                 alpha=0.2, gamma=0.99, tau=0.005, device='cpu'):
-        self.gamma = gamma
-        self.tau = tau
-        self.alpha = alpha
+    def __init__(self, state_dim, action_dim, config_path="configs/default_sac.yaml", device='cpu'):
+        # Load hyperparameters from YAML
+        with open(config_path, "r") as file:
+            config = yaml.safe_load(file)
+        
+        # Validate and convert types
+        self.gamma = float(config["gamma"])
+        self.tau = float(config["tau"])
+        self.alpha = float(config["alpha"])
         self.device = device  # Store the device
 
         # Networks
-        self.actor = ActorSAC(state_dim, action_dim).to(self.device)
-        self.critic1 = Critic(state_dim, action_dim).to(self.device)
-        self.critic2 = Critic(state_dim, action_dim).to(self.device)
+        hidden_dims = [int(dim) for dim in config["hidden_dims"]]  # Ensure hidden_dims are integers
+        self.actor = ActorSAC(state_dim, action_dim, hidden_dims=hidden_dims).to(self.device)
+        self.critic1 = Critic(state_dim, action_dim, hidden_dims=hidden_dims).to(self.device)
+        self.critic2 = Critic(state_dim, action_dim, hidden_dims=hidden_dims).to(self.device)
         # Target critics
-        self.target_critic1 = Critic(state_dim, action_dim).to(self.device)
-        self.target_critic2 = Critic(state_dim, action_dim).to(self.device)
+        self.target_critic1 = Critic(state_dim, action_dim, hidden_dims=hidden_dims).to(self.device)
+        self.target_critic2 = Critic(state_dim, action_dim, hidden_dims=hidden_dims).to(self.device)
         self.target_critic1.load_state_dict(self.critic1.state_dict())
         self.target_critic2.load_state_dict(self.critic2.state_dict())
         # Optimizers
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=float(config["actor_lr"]))
         self.critic_optimizer = torch.optim.Adam(
-            list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=critic_lr)
+            list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=float(config["critic_lr"]))
         # (If automating alpha, would create alpha param and optimizer here)
     
     def get_action(self, state, deterministic=False):

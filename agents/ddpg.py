@@ -1,26 +1,33 @@
+import yaml  # Add this import
 from agents.networks import ActorDDPG, Critic
 import torch
-import torch.nn.functional as F  # Add this import
+import torch.nn.functional as F
 
 class DDPGAgent:
-    def __init__(self, state_dim, action_dim, actor_lr=1e-3, critic_lr=1e-3, gamma=0.99, tau=0.005, device='cpu'):
-        self.gamma = gamma
-        self.tau = tau
+    def __init__(self, state_dim, action_dim, config_path="configs/default_ddpg.yaml", device='cpu'):
+        # Load hyperparameters from YAML
+        with open(config_path, "r") as file:
+            config = yaml.safe_load(file)
+        
+        # Validate and convert types
+        self.gamma = float(config["gamma"])
+        self.tau = float(config["tau"])
         self.device = device  # Store the device
 
         # Networks
-        self.actor = ActorDDPG(state_dim, action_dim).to(self.device)
-        self.critic = Critic(state_dim, action_dim).to(self.device)
+        hidden_dims = [int(dim) for dim in config["hidden_dims"]]  # Ensure hidden_dims are integers
+        self.actor = ActorDDPG(state_dim, action_dim, hidden_dims=hidden_dims).to(self.device)
+        self.critic = Critic(state_dim, action_dim, hidden_dims=hidden_dims).to(self.device)
         # Target networks (start as clones of the originals)
-        self.target_actor = ActorDDPG(state_dim, action_dim).to(self.device)
-        self.target_critic = Critic(state_dim, action_dim).to(self.device)
+        self.target_actor = ActorDDPG(state_dim, action_dim, hidden_dims=hidden_dims).to(self.device)
+        self.target_critic = Critic(state_dim, action_dim, hidden_dims=hidden_dims).to(self.device)
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.target_critic.load_state_dict(self.critic.state_dict())
         # Optimizers
-        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=actor_lr)
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=critic_lr)
+        self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=float(config["actor_lr"]))
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=float(config["critic_lr"]))
         # Exploration noise
-        self.noise_std = 0.1  # standard deviation of Gaussian noise for exploration
+        self.noise_std = float(config["noise_std"])
     
     def get_action(self, state, noise=True, deterministic=True):
         """Select an action for a given state, with optional exploration noise or deterministic mode."""

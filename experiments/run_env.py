@@ -15,6 +15,12 @@ from buffer.replay_buffer import ReplayBuffer
 from core.evaluate import evaluate_policy, linear_interpolation_policy
 from utils.seed import set_seed
 
+DEFAULT_TOTAL_STEPS = 5e5
+DEFAULT_BUFFER_SIZE = 1e6
+DEFAULT_EVAL_FREQ = 5000
+DEFAULT_MAX_EPISODE_STEPS = 1000
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Run LMC-RL experiments')
     parser.add_argument('--env', type=str, default='InvertedDoublePendulum-v5', 
@@ -22,14 +28,16 @@ def parse_args():
     parser.add_argument('--algo', type=str, default='SAC', choices=['SAC', 'DDPG'],
                         help='RL algorithm to use')
     parser.add_argument('--seed', type=int, default=0, help='Random seed')
-    parser.add_argument('--total_steps', type=int, default=1000000, 
+    parser.add_argument('--total_steps', type=int, default=DEFAULT_TOTAL_STEPS, 
                         help='Total training steps')
-    parser.add_argument('--eval_freq', type=int, default=5000, 
+    parser.add_argument('--eval_freq', type=int, default=DEFAULT_EVAL_FREQ, 
                         help='Evaluation frequency')
     parser.add_argument('--fork_points', type=str, default='0,0.1,0.2,0.5,0.8',
                         help='Comma-separated list of percentages of training to fork at')
     parser.add_argument('--config', type=str, default=None,
                         help='Path to config file')
+    parser.add_argument('--max_episode_steps', type=int, default=DEFAULT_MAX_EPISODE_STEPS, 
+                        help='Maximum number of steps per episode')
     return parser.parse_args()
 
 def load_config(config_path=None):
@@ -110,7 +118,8 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         fork1_buffer.add(state, action, reward, next_state, done)
         state = next_state if not done else fork1_env.reset()[0]
         
-        fork1_agent.update(fork1_buffer)
+        if len(fork1_buffer) > 10000: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
+            fork1_agent.update(fork1_buffer)
         
         if done:
             state, _ = fork1_env.reset()
@@ -118,8 +127,10 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     # Train fork 2 (similar to fork 1 but with different seed)
     set_seed(fork2_seed)
     fork2_env = gym.make(env_name)
+
+    #TODO: Experiment with what happens if we create a new buffer. De-couple this option "copy_buffer=bool" to experiment yaml config file
     fork2_buffer = deepcopy(buffer)  # Copy the buffer for fork 1
-    fork2_buffer.set_seed(fork1_seed)  # Set seed for the buffer if needed
+    fork2_buffer.set_seed(fork2_seed)  # Set seed for the buffer if needed
     
     print(f"Training fork 2 (seed: {fork2_seed}) from step {fork_step} to {total_steps}")
     state, _ = fork2_env.reset(seed=fork2_seed)
@@ -131,7 +142,9 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         fork2_buffer.add(state, action, reward, next_state, done)
         state = next_state if not done else fork2_env.reset()[0]
         
-        fork2_agent.update(fork2_buffer)
+        
+        if len(fork2_buffer) > 10000: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
+            fork2_agent.update(fork2_buffer)
         
         if done:
             state, _ = fork2_env.reset()
@@ -156,7 +169,7 @@ def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, nu
     fork2_rewards = evaluate_policy(fork2_agent, eval_env, num_episodes=num_eval_episodes)
     
     # Linear interpolation between the two agents
-    alphas = np.linspace(0, 1, 11)  # [0.0, 0.1, 0.2, ..., 1.0]
+    alphas = np.linspace(0, 1, 21)  # [0.0, 0.05, 0.1, 0.15, 0.2, ..., 1.0]
     interpolation_results = []
     
     for alpha in alphas:
@@ -210,15 +223,18 @@ def main():
     # Set random seed
     set_seed(args.seed)
     
-    # Create environment and agent
+    # Create environment and set max episode steps
     env = gym.make(args.env)
+    if args.max_episode_steps > 0:
+        env = gym.wrappers.TimeLimit(env, max_episode_steps=args.max_episode_steps)
+    
     agent = create_agent(env, args.algo, device)
     
     # Create replay buffer
     buffer = ReplayBuffer(
         state_dim=env.observation_space.shape[0],
         action_dim=env.action_space.shape[0],
-        max_size=int(config.get('buffer_size', 1000000)),
+        max_size=int(config.get('buffer_size', DEFAULT_BUFFER_SIZE)),
         device=device
     )
     
@@ -276,7 +292,8 @@ def main():
         episode_timesteps += 1
         
         # Update agent
-        agent.update(buffer)
+        if len(buffer) > 10000: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
+            agent.update(buffer)
         
         # Reset environment if done
         if done:

@@ -1,6 +1,6 @@
 gamma: 0.99
 tau: 0.005
-actor_lr: 0.001
-critic_lr: 0.001
+actor_lr: 0.001 # Adam with that lr as per OpenAI Spinning Up 
+critic_lr: 0.001 # Adam with that lr as per OpenAI Spinning Up
 noise_std: 0.1
 hidden_dims: [256, 256]

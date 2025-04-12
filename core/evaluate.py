@@ -1,16 +1,7 @@
 import copy
-import gymnasium as gym
 import torch
 import torch.nn as nn
-import numpy as np
-from agents.sac import SACAgent
-from agents.ddpg import DDPGAgent
 from agents.networks import ActorSAC, ActorDDPG
-from buffer.replay_buffer import ReplayBuffer
-from utils.seed import set_seed  # if a utility function is available
-# Device configuration: use MPS if available (on Apple silicon Macs)
-device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-print(f"Using device: {device}")
 
 
 def interpolate_policy(actorA: nn.Module, actorB: nn.Module, alpha: float):

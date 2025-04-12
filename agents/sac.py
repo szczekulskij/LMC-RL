@@ -49,6 +49,8 @@ class SACAgent:
         return action.detach().cpu().numpy()
     
     def train_step(self, replay_buffer, batch_size=256):
+        #TODO: De-couple batch_size to config file (do the same for DDPG)
+        # Batch size of 256 as per SpinningUp
         """One SAC training step on a batch."""
         states, actions, rewards, next_states, dones = replay_buffer.sample(batch_size)
         states, actions, rewards, next_states, dones = (

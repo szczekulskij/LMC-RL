@@ -5,7 +5,6 @@ Researching Linear Mode Connectivity in RL
 ```
 lmc_rl/
 ├── agents/
-│   ├── base.py              # Common interfaces / utilities (optional) #TODO: Remove this post migration
 │   ├── sac.py               # SACAgent class and SAC components
 │   ├── ddpg.py              # DDPGAgent class and DDPG components
 │   ├── networks.py          # Shared neural nets (ActorDDPG, ActorSAC, Critic)
@@ -17,23 +16,26 @@ lmc_rl/
 ├── core/
 │   ├── train.py             # Core training loop with forking logic
 │   ├── evaluate.py          # Weight interpolation and policy evaluation
+│
+├── utils/
 │   └── seed.py              # Global seeding utilities for reproducibility
 │
 ├── configs/
 │   ├── default_sac.yaml     # Hyperparameters for SAC (learning rates, tau, etc.)
 │   └── default_ddpg.yaml    # Hyperparameters for DDPG
 │
-├── experiments/
-│   ├── run_halfcheetah.py   # Script to run full training + fork + eval (main)
+├── experiments/ #TODO - Add
+│   ├── run_env.py           # Script to run full training + fork + eval (main)
 │   └── analyze_results.py   # Plotting / analysis of interpolation results
 │
 ├── logs/                    # TensorBoard or CSV logs (auto-created)
 │
-├── checkpoints/             # Saved agent checkpoints at fork/final
+├── model_weights/           # Saved agent checkpoints at fork/final
 │
 ├── results/                 # Saved interpolation metrics (e.g., JSON/CSV/plots)
 │
 ├── requirements_metal.txt   # All Python dependencies (PyTorch for metal)
+│
 └── README.md                # Project overview and usage instructions
 ```
 

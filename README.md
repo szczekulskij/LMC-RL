@@ -41,6 +41,7 @@ lmc_rl/
 # Self-notes
 * `conda activate /Users/szczekulskij/miniforge3/envs/ml_fo_robotics` to activate my env
 * To run check: `python -m core.check_run`
+* Handy command to log in the console while also logging into a log txt file! `python -u -m core.check_run 2>&1 | tee logs/check_up_runtime_logs.txt`
 
 
 # TODOs

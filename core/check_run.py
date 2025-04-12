@@ -82,7 +82,7 @@ def train_agent_on_env(agent_class, env_name, seed):
         
         # (Optional) Evaluate periodically using evaluation logic if available
         if episode % 50 == 0:
-            eval_reward = evaluate_policy(agent, env_name)  # hypothetical evaluation function
+            eval_reward = evaluate_policy(agent, env)  # Pass the environment object instead of its name
             print(f"Evaluation reward (episode {episode}): {eval_reward:.2f}")
     
     # Save the final trained model to disk

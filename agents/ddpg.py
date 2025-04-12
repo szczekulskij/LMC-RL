@@ -1,5 +1,6 @@
 from agents.networks import ActorDDPG, Critic
 import torch
+import torch.nn.functional as F  # Add this import
 
 class DDPGAgent:
     def __init__(self, state_dim, action_dim, actor_lr=1e-3, critic_lr=1e-3, gamma=0.99, tau=0.005, device='cpu'):
@@ -21,8 +22,8 @@ class DDPGAgent:
         # Exploration noise
         self.noise_std = 0.1  # standard deviation of Gaussian noise for exploration
     
-    def get_action(self, state, noise=True):
-        """Select an action for a given state, with optional exploration noise."""
+    def get_action(self, state, noise=True, deterministic=True):
+        """Select an action for a given state, with optional exploration noise or deterministic mode."""
         state_t = torch.tensor(state, dtype=torch.float32).to(self.device)
         a = self.actor(state_t)
         if noise:

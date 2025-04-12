@@ -11,20 +11,28 @@ from agents.networks import ActorSAC, Critic
 from buffer.replay_buffer import ReplayBuffer
 from core.evaluate import evaluate_policy  
 from utils.seed import set_seed  
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Device configuration: use MPS if available (on Apple silicon Macs)
 device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
 print(f"Using device: {device}")  # e.g., prints "Using device: mps" on an M1/M2 Mac
 
 
+
 # Configuration
 NUM_SEEDS = 3  # number of random seed trials (can adjust for more/less)
-ENV_NAMES = ["HalfCheetah-v5", "Hopper-v5"]
+ENV_NAMES = ["InvertedDoublePendulum-v5"]
 ALGOS = {
     "SAC": SACAgent,    # agent classes defined elsewhere
     "DDPG": DDPGAgent
 }
-NUM_EPISODES = 500             # training episodes per run (configurable)
+# NUM_EPISODES = 500             # training episodes per run (configurable)
+# NUM_EVAL_EPISODES = 50          # evaluation episodes (for logging)
+NUM_EPISODES = 10             # training episodes per run (configurable)
+NUM_EVAL_EPISODES = 3          # evaluation episodes (for logging)
+
+
+
 MAX_STEPS_PER_EPISODE = 1000   # max steps per episode (typical for MuJoCo envs)
 BATCH_SIZE = 256               # batch size for agent updates
 REPLAY_CAPACITY = 1000000      # capacity of replay buffer
@@ -81,16 +89,14 @@ def train_agent_on_env(agent_class, env_name, seed):
         print(f"[{agent_class.__name__} | {env_name} | Seed {seed}] Episode {episode}: Reward = {episode_reward:.2f}")
         
         # (Optional) Evaluate periodically using evaluation logic if available
-        if episode % 50 == 0:
+        if episode % NUM_EVAL_EPISODES == 0:
             eval_reward = evaluate_policy(agent, env)  # Pass the environment object instead of its name
             print(f"Evaluation reward (episode {episode}): {eval_reward:.2f}")
     
     # Save the final trained model to disk
     model_filename = f"{agent_class.__name__}_{env_name}_seed{seed}.pt"
-    # If the agent class has internal networks, save their state dicts. For simplicity:
-    torch.save(agent.get_state_dict(), model_filename)
-    # Alternatively, if agent is an nn.Module or has a .state_dict:
-    # torch.save(agent.state_dict(), model_filename)
+    filepath = f"model_weights/check_run/{model_filename}"
+    agent.save(filepath)  
     print(f"Saved model to {model_filename}")
     
     env.close()
@@ -108,37 +114,50 @@ for env_name in ENV_NAMES:
     time_fig, time_axes = plt.subplots(2, NUM_SEEDS, figsize=(15, 10))  # Separate figure for wall clock time
     time_fig.suptitle(f"Training Results for {env_name} (Wall Clock Time)", fontsize=16)
 
-    for row, (algo_name, agent_class) in enumerate(ALGOS.items()):
-        for col, seed in enumerate(range(NUM_SEEDS)):
-            print(f"\n=== Training {algo_name} on {env_name} (seed={seed}) ===")
-            rewards, cumulative_times = train_agent_on_env(agent_class, env_name, seed)
-            
-            # Plot the reward curve in the corresponding subplot
-            ax = axes[row, col]
-            ax.plot(rewards, label=f'Seed {seed}')
-            ax.set_title(f"{algo_name} (Seed {seed})")
-            ax.set_xlabel("Episode")
-            ax.set_ylabel("Total Reward")
-            ax.legend()
+    # Use ThreadPoolExecutor for parallelism
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {}
+        for row, (algo_name, agent_class) in enumerate(ALGOS.items()):
+            for col, seed in enumerate(range(NUM_SEEDS)):
+                print(f"\n=== Scheduling {algo_name} on {env_name} (seed={seed}) ===")
+                # Submit the train_agent_on_env function to the executor
+                future = executor.submit(train_agent_on_env, agent_class, env_name, seed)
+                futures[future] = (row, col, algo_name, seed)
 
-            # Plot the cumulative elapsed time in the corresponding subplot
-            time_ax = time_axes[row, col]
-            time_ax.plot(range(len(cumulative_times)), cumulative_times, label=f'Seed {seed}')
-            time_ax.set_title(f"{algo_name} (Seed {seed})")
-            time_ax.set_xlabel("Episode")
-            time_ax.set_ylabel("Wall Clock Time (s)")
-            time_ax.legend()
+        # Process results as they complete
+        for future in as_completed(futures):
+            row, col, algo_name, seed = futures[future]
+            try:
+                rewards, cumulative_times = future.result()  # Get the result of the training
+                # Plot the reward curve in the corresponding subplot
+                ax = axes[row, col]
+                ax.plot(rewards, label=f'Seed {seed}')
+                ax.set_title(f"{algo_name} (Seed {seed})")
+                ax.set_xlabel("Episode")
+                ax.set_ylabel("Total Reward")
+                ax.legend()
+
+                # Plot the cumulative elapsed time in the corresponding subplot
+                time_ax = time_axes[row, col]
+                time_ax.plot(range(len(cumulative_times)), cumulative_times, label=f'Seed {seed}')
+                time_ax.set_title(f"{algo_name} (Seed {seed})")
+                time_ax.set_xlabel("Episode")
+                time_ax.set_ylabel("Wall Clock Time (s)")
+                time_ax.legend()
+
+            except Exception as e:
+                print(f"Error occurred while training {algo_name} on {env_name} (seed={seed}): {e}")
 
     # Adjust layout and save the combined reward plot
-    plt.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for the suptitle
-    reward_plot_filename = f"{env_name}_combined_reward_plot.png"
-    plt.savefig(reward_plot_filename)
-    plt.close()
+    fig.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for the suptitle
+    reward_plot_filename = f"results/check_run/{env_name}_combined_reward_plot.png"
+    fig.savefig(reward_plot_filename)  # Use the correct figure for rewards
+    plt.close(fig)  # Close the reward figure
     print(f"Saved combined reward plot to {reward_plot_filename}")
 
     # Adjust layout and save the combined time plot
-    plt.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for the suptitle
-    time_plot_filename = f"{env_name}_combined_time_plot.png"
-    time_fig.savefig(time_plot_filename)
-    plt.close(time_fig)
+    time_fig.tight_layout(rect=[0, 0, 1, 0.95])  # Leave space for the suptitle
+    time_plot_filename = f"results/check_run/{env_name}_combined_time_plot.png"
+    time_fig.savefig(time_plot_filename)  # Use the correct figure for wall clock time
+    plt.close(time_fig)  # Close the time figure
     print(f"Saved combined time plot to {time_plot_filename}")

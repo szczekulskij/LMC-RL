@@ -38,12 +38,17 @@ lmc_rl/
 ```
 
 
-# Self-notes
+## Self-notes
 * `conda activate /Users/szczekulskij/miniforge3/envs/ml_fo_robotics` to activate my env
 * To run check: `python -m core.check_run`
 * Handy command to log in the console while also logging into a log txt file! `python -u -m core.check_run 2>&1 | tee logs/check_up_runtime_logs.txt`
 
+## Self-notes - MuJoco Env Hardness
+* Easy envs = ["InvertedDoublePendulum-v5", "Hopper-v5", "Swimmer-v5", "Reacher-v5"] (eg. small action space of few continous actions, with somewhat bigget state space of ~10-20)
+* Medium hard envs = ["HalfCheetah-v5", "Pusher-v5"]
+* Hard envs = ["HumanoidStandup-v5", "Humanoid-v5",]
 
-# TODOs
+
+## TODOs
 * Add "normal" requirements
 * Clean requirements for metal (it includes my rqs for ml for robotics class project, could be cleaner)

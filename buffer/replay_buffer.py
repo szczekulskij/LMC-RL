@@ -2,6 +2,8 @@ import collections
 import numpy as np
 import torch
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class ReplayBuffer:
     '''
     Pre-allocate the memory for efficiency.
@@ -41,11 +43,11 @@ class ReplayBuffer:
         assert self.size > 0, "Buffer is empty!"
         batch_indices = np.random.choice(self.size, size=batch_size, replace=False)
         # Convert to tensors for training
-        state_batch = torch.tensor(self.states[batch_indices], dtype=torch.float32)
-        action_batch = torch.tensor(self.actions[batch_indices], dtype=torch.float32)
-        reward_batch = torch.tensor(self.rewards[batch_indices], dtype=torch.float32).unsqueeze(1)
-        next_state_batch = torch.tensor(self.next_states[batch_indices], dtype=torch.float32)
-        done_batch = torch.tensor(self.dones[batch_indices], dtype=torch.float32).unsqueeze(1)
+        state_batch = torch.tensor(self.states[batch_indices], dtype=torch.float32).to(device)
+        action_batch = torch.tensor(self.actions[batch_indices], dtype=torch.float32).to(device)
+        reward_batch = torch.tensor(self.rewards[batch_indices], dtype=torch.float32).unsqueeze(1).to(device)
+        next_state_batch = torch.tensor(self.next_states[batch_indices], dtype=torch.float32).to(device)
+        done_batch = torch.tensor(self.dones[batch_indices], dtype=torch.float32).unsqueeze(1).to(device)
         return state_batch, action_batch, reward_batch, next_state_batch, done_batch
 
     def __len__(self):

@@ -4,7 +4,6 @@ import torch
 import numpy as np
 import random
 import gymnasium as gym
-# Import our previously defined classes (SACAgent, DDPGAgent, ReplayBuffer, evaluate_policy, etc.)
 from agents.ddpg import DDPGAgent
 from agents.sac import SACAgent
 from agents.networks import ActorSAC, Critic
@@ -90,8 +89,9 @@ def train_agent_on_env(agent_class, env_name, seed):
         
         # (Optional) Evaluate periodically using evaluation logic if available
         if episode % NUM_EVAL_EPISODES == 0:
-            eval_reward = evaluate_policy(agent, env)  # Pass the environment object instead of its name
-            print(f"Evaluation reward (episode {episode}): {eval_reward:.2f}")
+            eval_rewards = evaluate_policy(agent, env, episodes=NUM_EVAL_EPISODES)
+            avg_eval_reward = np.mean(eval_rewards)  # Calculate the average reward
+            print(f"Evaluation reward (episode {episode}): {avg_eval_reward:.2f}")
     
     # Save the final trained model to disk
     model_filename = f"{agent_class.__name__}_{env_name}_seed{seed}.pt"

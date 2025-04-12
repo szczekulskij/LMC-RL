@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 
 class DDPGAgent:
+    #TODO: I forgot to rescale the actions to the action space, (eg. DDPG returns [-1,1], so that might need to be possibly rescaled)
     def __init__(self, state_dim, action_dim, config_path="configs/default_ddpg.yaml", device='cpu'):
         # Load hyperparameters from YAML
         with open(config_path, "r") as file:

@@ -174,3 +174,4 @@ cython_debug/
 .pypirc
 *model_weights/check_run*
 *results/check_run
+*results

@@ -13,33 +13,21 @@ def interpolate_policy(actorA: nn.Module, actorB: nn.Module, alpha: float):
         param.data.copy_( (1 - alpha) * paramA.data + alpha * paramB.data )
     return new_actor
 
-def evaluate_policy(actor: nn.Module, env, episodes: int = 5):
-    """Run policy (actor network) for given number of episodes and return average return."""
-    total_return = 0.0
-    for ep in range(episodes):
-        state, _ = env.reset()  # reset environment
+def evaluate_policy(agent, env, episodes=10):
+    """Evaluate the policy over a number of episodes and return a list of returns."""
+    returns = []
+    for _ in range(episodes):
+        state, _ = env.reset()
         done = False
-        ep_return = 0.0
+        episode_return = 0
         while not done:
-            # Get action from actor. If actor is stochastic (SAC), use deterministic mode for evaluation:
-            if isinstance(actor, ActorSAC) or isinstance(actor, ActorDDPG):
-                # If it's one of our actor classes, we can forward and handle accordingly
-                if isinstance(actor, ActorSAC):
-                    mean, log_std = actor(torch.tensor(state, dtype=torch.float32))
-                    action = torch.tanh(mean)  # deterministic action (mean)
-                else:  # DDPG actor
-                    action = actor(torch.tensor(state, dtype=torch.float32))
-                action = action.detach().cpu().numpy()
-            else:
-                # If a full agent object is passed instead of actor network
-                action = actor.get_action(state, deterministic=True) 
-            next_state, reward, terminated, truncated, info = env.step(action)
+            action = agent.get_action(state, deterministic=True)
+            next_state, reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
-            ep_return += reward
+            episode_return += reward
             state = next_state
-        total_return += ep_return
-    avg_return = total_return / episodes
-    return avg_return
+        returns.append(episode_return)
+    return returns
 
 
 def linear_interpolation_weights(model1, model2, alpha):

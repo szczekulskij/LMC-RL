@@ -72,14 +72,12 @@ def create_agent(env, algo, device):
         return SACAgent(
             state_dim=env.observation_space.shape[0],
             action_dim=env.action_space.shape[0],
-            action_high=env.action_space.high,
             device=device,
         )
     elif algo == 'DDPG':
         return DDPGAgent(
             state_dim=env.observation_space.shape[0],
             action_dim=env.action_space.shape[0], 
-            action_high=env.action_space.high,
             device=device,
         )
     else:
@@ -111,7 +109,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     train_steps = total_steps - fork_step
     state, _ = fork1_env.reset(seed=fork1_seed)
     for _ in range(train_steps):
-        action = fork1_agent.select_action(state)
+        action = fork1_agent.get_action(state)
         next_state, reward, terminated, truncated, _ = fork1_env.step(action)
         done = terminated or truncated
         
@@ -119,7 +117,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         state = next_state if not done else fork1_env.reset()[0]
         
         if len(fork1_buffer) > 10000: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
-            fork1_agent.update(fork1_buffer)
+            fork1_agent.train_step(fork1_buffer)
         
         if done:
             state, _ = fork1_env.reset()
@@ -135,7 +133,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     print(f"Training fork 2 (seed: {fork2_seed}) from step {fork_step} to {total_steps}")
     state, _ = fork2_env.reset(seed=fork2_seed)
     for _ in range(train_steps):
-        action = fork2_agent.select_action(state)
+        action = fork2_agent.get_action(state)
         next_state, reward, terminated, truncated, _ = fork2_env.step(action)
         done = terminated or truncated
         
@@ -144,7 +142,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         
         
         if len(fork2_buffer) > 10000: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
-            fork2_agent.update(fork2_buffer)
+            fork2_agent.train_step(fork2_buffer)
         
         if done:
             state, _ = fork2_env.reset()
@@ -165,8 +163,8 @@ def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, nu
     eval_env = gym.make(env_name)
     
     # Evaluate individual agents
-    fork1_rewards = evaluate_policy(fork1_agent, eval_env, num_episodes=num_eval_episodes)
-    fork2_rewards = evaluate_policy(fork2_agent, eval_env, num_episodes=num_eval_episodes)
+    fork1_rewards = evaluate_policy(fork1_agent, eval_env, episodes=num_eval_episodes)
+    fork2_rewards = evaluate_policy(fork2_agent, eval_env, episodes=num_eval_episodes)
     
     # Linear interpolation between the two agents
     alphas = np.linspace(0, 1, 21)  # [0.0, 0.05, 0.1, 0.15, 0.2, ..., 1.0]
@@ -211,10 +209,10 @@ def main():
     print(f"Using device: {device}")
     
     # Load configuration
-    config = load_config(args.algo, args.config)
+    config = load_config(args.config)
     
     # Create experiment directories
-    exp_dir, weights_dir = create_experiment_dir(args.env, args.algo, args.seed)
+    exp_dir, weights_dir = create_experiment_dir(args.env, args.algo, args.seed, config.get('experiment_name', 'NoExperimentNameGiven'))
     
     # Save experiment config
     with open(f"{exp_dir}/config.yaml", 'w') as f:
@@ -234,13 +232,12 @@ def main():
     buffer = ReplayBuffer(
         state_dim=env.observation_space.shape[0],
         action_dim=env.action_space.shape[0],
-        max_size=int(config.get('buffer_size', DEFAULT_BUFFER_SIZE)),
-        device=device
+        capacity=int(config.get('buffer_size', DEFAULT_BUFFER_SIZE))
     )
     
     # Parse fork points
     fork_percentages = [float(p) for p in args.fork_points.split(',')]
-    fork_steps = [int(p * args.total_steps) for p in fork_percentages]
+    fork_steps = [int(p * int(args.total_steps)) for p in fork_percentages]
     
     # Initialize variables
     state, _ = env.reset(seed=args.seed)
@@ -253,7 +250,7 @@ def main():
     print(f"Starting training for {args.total_steps} steps")
     all_fork_results = []
     
-    for t in range(1, args.total_steps + 1):
+    for t in range(1, int(args.total_steps) + 1):
         # Fork if at a fork point
         if t in fork_steps:
             fork_id = fork_steps.index(t)
@@ -278,7 +275,7 @@ def main():
             print(f"Fork {fork_id} at step {t} ({t/args.total_steps:.1%}) is {stability_status} with instability: {fork_result['instability']:.4f}")
         
         # Select action with exploration noise
-        action = agent.select_action(state)
+        action = agent.get_action(state)
         
         # Perform action
         next_state, reward, terminated, truncated, _ = env.step(action)
@@ -293,7 +290,7 @@ def main():
         
         # Update agent
         if len(buffer) > 10000: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
-            agent.update(buffer)
+            agent.train_step(buffer)
         
         # Reset environment if done
         if done:
@@ -305,7 +302,7 @@ def main():
         
         # Evaluate agent
         if t % args.eval_freq == 0:
-            eval_rewards = evaluate_policy(agent, gym.make(args.env), num_episodes=10)
+            eval_rewards = evaluate_policy(agent, gym.make(args.env), episodes=10)
             print(f"Step {t}: Evaluation over 10 episodes: {np.mean(eval_rewards):.3f}")
             
             # Save evaluation results

@@ -132,3 +132,32 @@ class SACAgent:
         self.critic_optimizer.load_state_dict(checkpoint['critic_opt'])
         # If alpha were learnable, load it and its optimizer state as well
 
+    def load_from_another_agent(self, another_agent):
+        """Load weights from another SAC agent."""
+        self.actor.load_state_dict(another_agent.actor.state_dict())
+        self.critic1.load_state_dict(another_agent.critic1.state_dict())
+        self.critic2.load_state_dict(another_agent.critic2.state_dict())
+        self.target_critic1.load_state_dict(another_agent.target_critic1.state_dict())
+        self.target_critic2.load_state_dict(another_agent.target_critic2.state_dict())
+        # Note: Optimizers are not copied, as they depend on the training state
+
+    def interpolate_with_other_agent(self, other_agent, alpha):
+        """
+        Interpolate the weights of this agent with another agent's weights.
+        
+        Args:
+            other_agent_weights (dict): State dictionary of the other agent.
+            alpha (float): Interpolation factor (0.0 = this agent, 1.0 = other agent).
+        """
+        for param, other_param in zip(self.actor.parameters(), other_agent.actor.parameters()):
+            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+        for param, other_param in zip(self.critic1.parameters(), other_agent.critic1.parameters()):
+            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+        for param, other_param in zip(self.critic2.parameters(), other_agent.critic2.parameters()):
+            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+        for param, other_param in zip(self.target_critic1.parameters(), other_agent.target_critic1.parameters()):
+            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+        for param, other_param in zip(self.target_critic2.parameters(), other_agent.target_critic2.parameters()):
+            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+        # Note: Optimizers are not interpolated, since we don't run training afte interpolation
+        # If alpha were learnable, interpolate it as well

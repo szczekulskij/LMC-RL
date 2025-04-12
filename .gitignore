@@ -172,6 +172,6 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-*model_weights/check_run*
-*results/check_run
+*model_weights
+*results
 *results

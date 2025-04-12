@@ -15,7 +15,7 @@ lmc_rl/
 │
 ├── core/
 │   ├── train.py             # Core training loop with forking logic
-│   ├── evaluate.py          # Weight interpolation and policy evaluation
+│   ├── evaluate.py          # Instability calculations and policy evaluation
 │
 ├── utils/
 │   └── seed.py              # Global seeding utilities for reproducibility

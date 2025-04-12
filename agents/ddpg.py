@@ -92,3 +92,41 @@ class DDPGAgent:
         self.target_critic.load_state_dict(checkpoint['target_critic'])
         self.actor_optimizer.load_state_dict(checkpoint['actor_opt'])
         self.critic_optimizer.load_state_dict(checkpoint['critic_opt'])
+
+    def load_from_another_agent(self, other_agent):
+        """
+        Load weights from another DDPG agent.
+        
+        Args:
+            other_agent (DDPGAgent): Another DDPG agent to load weights from.
+        """
+        self.actor.load_state_dict(other_agent.actor.state_dict())
+        self.critic.load_state_dict(other_agent.critic.state_dict())
+        self.target_actor.load_state_dict(other_agent.target_actor.state_dict())
+        self.target_critic.load_state_dict(other_agent.target_critic.state_dict())
+        self.actor_optimizer.load_state_dict(other_agent.actor_optimizer.state_dict())
+        self.critic_optimizer.load_state_dict(other_agent.critic_optimizer.state_dict())
+
+    def interpolate_with_other_agent(self, other_agent_weights, alpha):
+        """
+        Interpolate the weights of this agent with another agent's weights.
+        
+        Args:
+            other_agent_weights (dict): State dictionary of the other agent.
+            alpha (float): Interpolation factor (0.0 = this agent, 1.0 = other agent).
+        """
+        # Interpolate actor weights
+        for param, other_param in zip(self.actor.parameters(), other_agent_weights['actor'].values()):
+            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+
+        # Interpolate critic weights
+        for param, other_param in zip(self.critic.parameters(), other_agent_weights['critic'].values()):
+            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+
+        # Interpolate target actor weights
+        for param, other_param in zip(self.target_actor.parameters(), other_agent_weights['target_actor'].values()):
+            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+
+        # Interpolate target critic weights
+        for param, other_param in zip(self.target_critic.parameters(), other_agent_weights['target_critic'].values()):
+            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)

@@ -15,7 +15,8 @@ from buffer.replay_buffer import ReplayBuffer
 from core.evaluate import evaluate_policy, linear_interpolation_policy
 from utils.seed import set_seed
 
-DEFAULT_TOTAL_STEPS = 5e5
+# DEFAULT_TOTAL_STEPS = 5e5
+DEFAULT_TOTAL_STEPS = 5e4 //20 # For testing purposes, set to 25k steps
 DEFAULT_BUFFER_SIZE = 1e6
 DEFAULT_EVAL_FREQ = 5000
 DEFAULT_MAX_EPISODE_STEPS = 1000
@@ -92,8 +93,8 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     fork2_agent = create_agent(gym.make(env_name), algo_name, device=device)
     
     # Load weights from the parent agent
-    fork1_agent.load_state_dict(agent.state_dict())
-    fork2_agent.load_state_dict(agent.state_dict())
+    fork1_agent.load_from_another_agent(agent)
+    fork2_agent.load_from_another_agent(agent)
     
     # Continue training both forks with different random seeds
     fork1_seed = fork_id + 10000
@@ -105,10 +106,11 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     fork1_buffer = deepcopy(buffer)  # Copy the buffer for fork 1
     fork1_buffer.set_seed(fork1_seed)  # Set seed for the buffer if needed
     
+    total_steps = int(total_steps) #TODO: Fit upstream
     print(f"Training fork 1 (seed: {fork1_seed}) from step {fork_step} to {total_steps}")
-    train_steps = total_steps - fork_step
+    train_steps = int(total_steps - fork_step)
     state, _ = fork1_env.reset(seed=fork1_seed)
-    for _ in range(train_steps):
+    for step in range(train_steps):
         action = fork1_agent.get_action(state)
         next_state, reward, terminated, truncated, _ = fork1_env.step(action)
         done = terminated or truncated
@@ -121,6 +123,10 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         
         if done:
             state, _ = fork1_env.reset()
+        
+        # Print progress for fork 1
+        if step % (train_steps // 10) == 0:  # Print every 10% of progress
+            print(f"Fork 1 (ID: {fork_id}): {step / train_steps:.1%} completed")
     
     # Train fork 2 (similar to fork 1 but with different seed)
     set_seed(fork2_seed)
@@ -132,7 +138,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     
     print(f"Training fork 2 (seed: {fork2_seed}) from step {fork_step} to {total_steps}")
     state, _ = fork2_env.reset(seed=fork2_seed)
-    for _ in range(train_steps):
+    for step in range(train_steps):
         action = fork2_agent.get_action(state)
         next_state, reward, terminated, truncated, _ = fork2_env.step(action)
         done = terminated or truncated
@@ -146,12 +152,18 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         
         if done:
             state, _ = fork2_env.reset()
+        
+        # Print progress for fork 2
+        if step % (train_steps // 10) == 0:  # Print every 10% of progress
+            print(f"Fork 2 (ID: {fork_id}): {step / train_steps:.1%} completed")
     
     # Save the final weights
     fork1_path = f"{weights_dir}/fork1_{fork_id}.pt"
     fork2_path = f"{weights_dir}/fork2_{fork_id}.pt"
-    torch.save(fork1_agent.state_dict(), fork1_path)
-    torch.save(fork2_agent.state_dict(), fork2_path)
+    fork1_agent.save(fork1_path)
+    fork2_agent.save(fork2_path)
+    print(f"Fork 1 saved to {fork1_path}")
+    print(f"Fork 2 saved to {fork2_path}")
     
     return fork1_agent, fork2_agent
 
@@ -294,11 +306,14 @@ def main():
         
         # Reset environment if done
         if done:
-            print(f"Episode {episode_num+1}: Total reward = {episode_reward:.3f}")
             state, _ = env.reset()
             episode_reward = 0
             episode_timesteps = 0
             episode_num += 1
+
+        # print number of steps every 1% of total steps
+        if t % (args.total_steps // 100) == 0:
+            print(f"Step {t}: {t / args.total_steps:.1%} of all (non-forked) run completed")
         
         # Evaluate agent
         if t % args.eval_freq == 0:
@@ -315,7 +330,7 @@ def main():
                 }, f, indent=4)
     
     # Save final model
-    torch.save(agent.state_dict(), f"{weights_dir}/final.pt")
+    agent.save(f"{weights_dir}/final.pt")
     
     # Save all fork results in one file
     with open(f"{exp_dir}/all_forks_results.json", 'w') as f:

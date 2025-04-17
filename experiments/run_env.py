@@ -33,7 +33,11 @@ def parse_args():
                         help='Total training steps')
     parser.add_argument('--eval_freq', type=int, default=DEFAULT_EVAL_FREQ, 
                         help='Evaluation frequency')
-    parser.add_argument('--fork_points', type=str, default='0,0.1,0.2,0.5,0.8',
+    
+    
+    default_fork_points = ','.join([str(i/100) for i in range(0, 101, 10)])
+    # default_fork_points = '0.01,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8'
+    parser.add_argument('--fork_points', type=str, default=default_fork_points,
                         help='Comma-separated list of percentages of training to fork at')
     parser.add_argument('--config', type=str, default=None,
                         help='Path to config file')
@@ -171,7 +175,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     
     return fork1_agent, fork2_agent
 
-def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, num_eval_episodes=10):
+def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, num_eval_episodes=100):
     """Analyze instability between two forked agents using linear interpolation."""
     print(f"Analyzing instability for fork {fork_id}")
     
@@ -183,7 +187,7 @@ def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, nu
     fork2_rewards = evaluate_policy(fork2_agent, eval_env, episodes=num_eval_episodes)
     
     # Linear interpolation between the two agents
-    alphas = np.linspace(0, 1, 21)  # [0.0, 0.05, 0.1, 0.15, 0.2, ..., 1.0]
+    alphas = np.linspace(0, 1, 100)
     interpolation_results = []
     
     for alpha in alphas:

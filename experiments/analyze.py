@@ -65,15 +65,22 @@ def plot_individual_interpolations(fork_results, out_dir):
 
 
 def plot_instability_over_time(fork_results, total_steps, out_dir):
+    """Plot instability over time with proper scaling and visualization."""
     fork_steps = [f['fork_step'] for f in fork_results]
     fork_times = [step / total_steps for step in fork_steps]
     instabilities = [f['instability'] for f in fork_results]
 
-    plt.figure()
-    plt.plot(fork_times, instabilities, marker='o')
+    # Ensure data is sorted by fork time
+    sorted_indices = np.argsort(fork_times)
+    fork_times = np.array(fork_times)[sorted_indices]
+    instabilities = np.array(instabilities)[sorted_indices]
+
+    plt.figure(figsize=(8, 6))
+    plt.plot(fork_times, instabilities, marker='o', label="Instability")
     plt.xlabel("Fork point (% of training)")
     plt.ylabel("Instability")
     plt.title("Instability Over Time")
+    plt.legend()
     plt.grid()
     plt.tight_layout()
     plt.savefig(f"{out_dir}/instability_over_time.png")

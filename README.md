@@ -55,3 +55,4 @@ lmc_rl/
 * Add "normal" requirements
 * Clean requirements for metal (it includes my reqs for ml for robotics class project, could be cleaner)
 * Remove the experiment default config perhaps. I don't see why there should be two places of "ground truth" setting (eg. either using yaml or pass everything from the console!)
+* Change plotting to plot multiple subfigures next to each other, rather than single figure !

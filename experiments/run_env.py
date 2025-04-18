@@ -21,6 +21,9 @@ DEFAULT_BUFFER_SIZE = 1e6
 DEFAULT_EVAL_FREQ = 1000
 DEFAULT_MAX_EPISODE_STEPS = 1000
 
+# Hyperparameters
+max_episode_steps = 1000
+num_eval_episodes = 10
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run LMC-RL experiments')
@@ -236,7 +239,7 @@ def main():
     
     # Save experiment config
     with open(f"{exp_dir}/config.yaml", 'w') as f:
-        yaml.dump({**config, **vars(args)}, f)
+        yaml.dump({**config, **vars(args), "max_episode_steps": max_episode_steps, "num_eval_episodes": num_eval_episodes}, f)
     
     # Set random seed
     set_seed(args.seed)
@@ -270,6 +273,7 @@ def main():
     print(f"Starting training for {args.total_steps} steps")
     all_fork_results = []
     
+    start_time = time.time()
     for t in range(1, int(args.total_steps) + 1):
         # Fork if at a fork point
         if t in fork_steps:
@@ -341,6 +345,13 @@ def main():
     # Save all fork results in one file
     with open(f"{exp_dir}/all_forks_results.json", 'w') as f:
         json.dump(all_fork_results, f, indent=4)
+    
+    end_time = time.time()
+    running_time = end_time - start_time
+
+    # Append running_time to config.yaml
+    with open(f"{exp_dir}/config.yaml", 'a') as f:
+        yaml.dump({"running_time": running_time}, f)
     
     print(f"Training complete. Results saved to {exp_dir}")
 

@@ -35,7 +35,7 @@ def linear_interpolation_policy(agent1, agent2, alpha, env, num_episodes=10):
         List of rewards obtained in each episode.
     """
     # Save the original weights of agent1
-    agent1_copy = copy.deepcopy(agent1)
+    agent1_state = copy.deepcopy(agent1.state_dict())
 
     # Interpolate weights with agent2
     agent1.interpolate_with_other_agent(agent2, alpha)
@@ -44,6 +44,6 @@ def linear_interpolation_policy(agent1, agent2, alpha, env, num_episodes=10):
     rewards = evaluate_policy(agent1, env, episodes=num_episodes)
 
     # Restore the original weights of agent1
-    agent1 = agent1_copy
+    agent1.load_state_dict(agent1_state)
 
     return rewards

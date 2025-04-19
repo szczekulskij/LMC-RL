@@ -109,7 +109,7 @@ class SACAgent:
             target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
         # (If alpha were learnable, update alpha here using target entropy loss)
     
-    def save(self, filepath):
+    def save(self, filepath): #TODO: Rename to save_to_filepath
         torch.save({
             'actor': self.actor.state_dict(),
             'critic1': self.critic1.state_dict(),
@@ -121,7 +121,7 @@ class SACAgent:
             # 'alpha': self.alpha  (if alpha is learned, include its state)
         }, filepath)
     
-    def load(self, filepath):
+    def load(self, filepath): #TODO: Rename to load_from_filepath
         checkpoint = torch.load(filepath, map_location='cpu')
         self.actor.load_state_dict(checkpoint['actor'])
         self.critic1.load_state_dict(checkpoint['critic1'])
@@ -144,20 +144,58 @@ class SACAgent:
     def interpolate_with_other_agent(self, other_agent, alpha):
         """
         Interpolate the weights of this agent with another agent's weights.
-        
+
         Args:
-            other_agent_weights (dict): State dictionary of the other agent.
+            other_agent (SACAgent): The other agent to interpolate with.
             alpha (float): Interpolation factor (0.0 = this agent, 1.0 = other agent).
         """
-        for param, other_param in zip(self.actor.parameters(), other_agent.actor.parameters()):
-            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
-        for param, other_param in zip(self.critic1.parameters(), other_agent.critic1.parameters()):
-            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
-        for param, other_param in zip(self.critic2.parameters(), other_agent.critic2.parameters()):
-            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
-        for param, other_param in zip(self.target_critic1.parameters(), other_agent.target_critic1.parameters()):
-            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
-        for param, other_param in zip(self.target_critic2.parameters(), other_agent.target_critic2.parameters()):
-            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
-        # Note: Optimizers are not interpolated, since we don't run training afte interpolation
-        # If alpha were learnable, interpolate it as well
+        # Create a temporary copy of the current agent's weights
+        self_weights = {name: param.clone() for name, param in self.actor.named_parameters()}
+
+        # Interpolate actor weights
+        for param, other_param, self_param in zip(
+            self.actor.parameters(), other_agent.actor.parameters(), self_weights.values()
+        ):
+            param.data.copy_((1 - alpha) * self_param.data + alpha * other_param.data)
+
+        # Interpolate critic weights
+        for param, other_param, self_param in zip(
+            self.critic1.parameters(), other_agent.critic1.parameters(), self.critic1.state_dict().values()
+        ):
+            param.data.copy_((1 - alpha) * self_param.data + alpha * other_param.data)
+
+        for param, other_param, self_param in zip(
+            self.critic2.parameters(), other_agent.critic2.parameters(), self.critic2.state_dict().values()
+        ):
+            param.data.copy_((1 - alpha) * self_param.data + alpha * other_param.data)
+
+        # Interpolate target critic weights
+        for param, other_param, self_param in zip(
+            self.target_critic1.parameters(), other_agent.target_critic1.parameters(), self.target_critic1.state_dict().values()
+        ):
+            param.data.copy_((1 - alpha) * self_param.data + alpha * other_param.data)
+
+        for param, other_param, self_param in zip(
+            self.target_critic2.parameters(), other_agent.target_critic2.parameters(), self.target_critic2.state_dict().values()
+        ):
+            param.data.copy_((1 - alpha) * self_param.data + alpha * other_param.data)
+
+        # Note: Optimizers are not interpolated, as they depend on training state.
+
+    def state_dict(self):
+        """Return the state dictionary of the agent."""
+        return {
+            "actor": self.actor.state_dict(),
+            "critic1": self.critic1.state_dict(),
+            "critic2": self.critic2.state_dict(),
+            "target_critic1": self.target_critic1.state_dict(),
+            "target_critic2": self.target_critic2.state_dict(),
+        }
+
+    def load_state_dict(self, state_dict):
+        """Load the state dictionary into the agent."""
+        self.actor.load_state_dict(state_dict["actor"])
+        self.critic1.load_state_dict(state_dict["critic1"])
+        self.critic2.load_state_dict(state_dict["critic2"])
+        self.target_critic1.load_state_dict(state_dict["target_critic1"])
+        self.target_critic2.load_state_dict(state_dict["target_critic2"])

@@ -24,6 +24,7 @@ DEFAULT_MAX_EPISODE_STEPS = 1000
 # Hyperparameters
 max_episode_steps = 1000
 num_eval_episodes = 10
+alphas = np.linspace(0, 1, 101) # alphas for linear interpolation
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run LMC-RL experiments')
@@ -190,7 +191,6 @@ def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, nu
     fork2_rewards = evaluate_policy(fork2_agent, eval_env, episodes=num_eval_episodes)
     
     # Linear interpolation between the two agents
-    alphas = np.linspace(0, 1, 100)
     interpolation_results = []
     
     for alpha in alphas:
@@ -239,7 +239,7 @@ def main():
     
     # Save experiment config
     with open(f"{exp_dir}/config.yaml", 'w') as f:
-        yaml.dump({**config, **vars(args), "max_episode_steps": max_episode_steps, "num_eval_episodes": num_eval_episodes}, f)
+        yaml.dump({**config, **vars(args), "max_episode_steps": max_episode_steps, "num_eval_episodes": num_eval_episodes, "alphas": str(alphas.tolist())}, f)
     
     # Set random seed
     set_seed(args.seed)

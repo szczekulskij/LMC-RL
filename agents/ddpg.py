@@ -32,11 +32,11 @@ class DDPGAgent(RLAgentSuperClass):
         # Exploration noise
         self.noise_std = float(config["noise_std"])
     
-    def get_action(self, state, noise=True, deterministic=True):
+    def get_action(self, state, deterministic=False):
         """Select an action for a given state, with optional exploration noise or deterministic mode."""
         state_t = torch.tensor(state, dtype=torch.float32).to(self.device)
         a = self.actor(state_t)
-        if noise:
+        if not deterministic:
             # Add Gaussian noise for exploration, and clip to [-1, 1]
             a = a + torch.normal(mean=0.0, std=self.noise_std, size=a.shape).to(self.device)
             a = torch.clamp(a, -1.0, 1.0)

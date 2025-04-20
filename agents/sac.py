@@ -1,10 +1,13 @@
 import yaml  # Add this import
 from agents.networks import ActorSAC, Critic
+from agents.rl_agent_superclass import RLAgentSuperClass
 import torch
 import torch.nn.functional as F
 
-class SACAgent:
+class SACAgent(RLAgentSuperClass):
     def __init__(self, state_dim, action_dim, config_path="configs/default_sac.yaml", device='cpu'):
+        self.algo_name = "SAC"
+        super().__init__()  # Call the superclass constructor to enforce algo_name check
         # Load hyperparameters from YAML
         with open(config_path, "r") as file:
             config = yaml.safe_load(file)
@@ -30,8 +33,6 @@ class SACAgent:
         self.critic_optimizer = torch.optim.Adam(
             list(self.critic1.parameters()) + list(self.critic2.parameters()), lr=float(config["critic_lr"]))
         # (If automating alpha, would create alpha param and optimizer here)
-
-        self.algo_name = "SAC"
     
     def get_action(self, state, deterministic=False):
         """Sample an action from the policy. If deterministic=True, return the mean action (for evaluation)."""

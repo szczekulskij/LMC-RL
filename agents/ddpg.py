@@ -1,11 +1,13 @@
 import yaml  # Add this import
 from agents.networks import ActorDDPG, Critic
+from agents.rl_agent_superclass import RLAgentSuperClass
 import torch
 import torch.nn.functional as F
 
-class DDPGAgent:
-    #TODO: I forgot to rescale the actions to the action space, (eg. DDPG returns [-1,1], so that might need to be possibly rescaled)
+class DDPGAgent(RLAgentSuperClass):
     def __init__(self, state_dim, action_dim, config_path="configs/default_ddpg.yaml", device='cpu'):
+        self.algo_name = "DDPG"
+        super().__init__()  # Call the superclass constructor to enforce algo_name check
         # Load hyperparameters from YAML
         with open(config_path, "r") as file:
             config = yaml.safe_load(file)
@@ -107,26 +109,53 @@ class DDPGAgent:
         self.actor_optimizer.load_state_dict(other_agent.actor_optimizer.state_dict())
         self.critic_optimizer.load_state_dict(other_agent.critic_optimizer.state_dict())
 
-    def interpolate_with_other_agent(self, other_agent_weights, alpha):
+    def interpolate_with_other_agent(self, other_agent, alpha):
         """
         Interpolate the weights of this agent with another agent's weights.
-        
+
         Args:
-            other_agent_weights (dict): State dictionary of the other agent.
+            other_agent (DDPGAgent): The other agent to interpolate with.
             alpha (float): Interpolation factor (0.0 = this agent, 1.0 = other agent).
         """
+        # Create a temporary copy of the current agent's weights
+        self_weights = {name: param.clone() for name, param in self.actor.named_parameters()}
+
         # Interpolate actor weights
-        for param, other_param in zip(self.actor.parameters(), other_agent_weights['actor'].values()):
-            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+        for param, other_param, self_param in zip(
+            self.actor.parameters(), other_agent.actor.parameters(), self_weights.values()
+        ):
+            param.data.copy_((1 - alpha) * self_param.data + alpha * other_param.data)
 
         # Interpolate critic weights
-        for param, other_param in zip(self.critic.parameters(), other_agent_weights['critic'].values()):
-            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+        for param, other_param, self_param in zip(
+            self.critic.parameters(), other_agent.critic.parameters(), self.critic.state_dict().values()
+        ):
+            param.data.copy_((1 - alpha) * self_param.data + alpha * other_param.data)
 
         # Interpolate target actor weights
-        for param, other_param in zip(self.target_actor.parameters(), other_agent_weights['target_actor'].values()):
-            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+        for param, other_param, self_param in zip(
+            self.target_actor.parameters(), other_agent.target_actor.parameters(), self.target_actor.state_dict().values()
+        ):
+            param.data.copy_((1 - alpha) * self_param.data + alpha * other_param.data)
 
         # Interpolate target critic weights
-        for param, other_param in zip(self.target_critic.parameters(), other_agent_weights['target_critic'].values()):
-            param.data.copy_((1 - alpha) * param.data + alpha * other_param.data)
+        for param, other_param, self_param in zip(
+            self.target_critic.parameters(), other_agent.target_critic.parameters(), self.target_critic.state_dict().values()
+        ):
+            param.data.copy_((1 - alpha) * self_param.data + alpha * other_param.data)
+
+    def state_dict(self):
+        """Return the state dictionary of the agent."""
+        return {
+            "actor": self.actor.state_dict(),
+            "critic": self.critic.state_dict(),
+            "target_actor": self.target_actor.state_dict(),
+            "target_critic": self.target_critic.state_dict(),
+        }
+
+    def load_state_dict(self, state_dict):
+        """Load the state dictionary into the agent."""
+        self.actor.load_state_dict(state_dict["actor"])
+        self.critic.load_state_dict(state_dict["critic"])
+        self.target_actor.load_state_dict(state_dict["target_actor"])
+        self.target_critic.load_state_dict(state_dict["target_critic"])

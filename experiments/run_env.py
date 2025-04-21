@@ -271,14 +271,17 @@ def main():
     # Set random seed
     set_seed(args.seed)
     
-    # Create environment and set max episode steps
-    if args.num_parallel_env == 1: # not parallel env
+    # Create vectorized environments
+    def make_env():
+        return lambda: gym.make(args.env)
+
+    if args.num_parallel_env > 1:
+        env = gym.vector.AsyncVectorEnv([make_env() for _ in range(args.num_parallel_env)])
+    else:
         env = gym.make(args.env)
-    elif args.num_parallel_env > 1: # parallel env
-        env = gym.make_vec(args.env, num_envs=args.num_parallel_env, vectorization_mode="async")
-    else :
-        raise ValueError(f"num_envs must be 1 or greater, but got {args.num_parallel_env}.")
-    if args.max_episode_steps > 0:
+
+    # Remove TimeLimit wrapper for vectorized environments
+    if args.num_parallel_env == 1 and args.max_episode_steps > 0:
         env = gym.wrappers.TimeLimit(env, max_episode_steps=args.max_episode_steps)
     
     agent = create_agent(env, args.algo, device)
@@ -298,6 +301,7 @@ def main():
             state_dim=env.observation_space.shape[0],
             action_dim=env.action_space.shape[0],
             num_envs=args.num_parallel_env,
+            device=device,
             capacity=int(config.get('buffer_size', DEFAULT_BUFFER_SIZE)),
         )
     else:
@@ -332,11 +336,12 @@ def main():
                                                      weights_dir = weights_dir, 
                                                      device = device, 
                                                      buffer = buffer, 
-                                                     total_steps = args.total_steps
+                                                     total_steps = args.total_steps,
+                                                     num_envs = args.num_parallel_env
                                                     )
             
             # Analyze instability between the forks
-            fork_result = analyze_instability(args.env, fork1_agent, fork2_agent, exp_dir, fork_id)
+            fork_result = analyze_instability(args.env, fork1_agent, fork2_agent, exp_dir, fork_id, num_eval_episodes)
             all_fork_results.append(fork_result)
             
             # Print stability result

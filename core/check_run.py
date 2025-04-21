@@ -1,5 +1,7 @@
 # One-off script to run 
 
+# TODO: Fix it to fit the parallelism of the training process
+
 import torch
 import numpy as np
 import random

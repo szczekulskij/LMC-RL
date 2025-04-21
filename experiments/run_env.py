@@ -11,7 +11,7 @@ from datetime import datetime
 
 from agents.ddpg import DDPGAgent
 from agents.sac import SACAgent
-from buffer.replay_buffer import ReplayBuffer
+from buffer.replay_buffer import ParallelReplayBuffer, ReplayBuffer
 from core.evaluate import evaluate_policy, linear_interpolation_policy
 from utils.seed import set_seed
 import random
@@ -24,7 +24,7 @@ DEFAULT_MAX_EPISODE_STEPS = 1000
 # Hyperparameters
 max_episode_steps = 1000
 num_eval_episodes = 10
-alphas = np.linspace(0, 1, 101) # alphas for linear interpolation
+alphas = np.linspace(0, 1, 51) # alphas for linear interpolation
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run LMC-RL experiments')
@@ -47,6 +47,12 @@ def parse_args():
                         help='Path to config file')
     parser.add_argument('--max_episode_steps', type=int, default=DEFAULT_MAX_EPISODE_STEPS, 
                         help='Maximum number of steps per episode')
+    
+
+    # Set the env to be parallel by default
+    # Side-Note: If "num_parallel_env" doesn't appear in saved data, it means that the env was not parallelized
+    parser.add_argument('--num_parallel_env', type=int, default=os.cpu_count()-2,  # set to "max cores - 2" so that the system is not overloaded
+                        help='Number of parallel environments to use')
     return parser.parse_args()
 
 def load_config(config_path=None):
@@ -92,7 +98,7 @@ def create_agent(env, algo, device):
     else:
         raise ValueError(f"Unsupported algorithm: {algo}")
 
-def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, device, buffer, total_steps):
+def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, device, buffer, total_steps, num_envs):
     """Fork agent training and train with different noise that comes from different seeds."""
     print(f"Forking at step {fork_step} (ID: {fork_id})")
     
@@ -110,7 +116,13 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     
     # Train fork 1
     set_seed(fork1_seed)
-    fork1_env = gym.make(env_name)
+    if num_envs == 1: # not parallel env
+        fork1_env = gym.make(env_name)
+    elif num_envs > 1: # parallel env
+        fork1_env = gym.make_vec(env_name, num_envs=2, vectorization_mode="async")
+    else :
+        raise ValueError(f"num_envs must be 1 or greater, but got {num_envs}.")
+
     fork1_buffer = deepcopy(buffer)  # Copy the buffer for fork 1
     fork1_buffer.set_seed(fork1_seed)  # Set seed for the buffer if needed
     
@@ -140,7 +152,13 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     
     # Train fork 2 (similar to fork 1 but with different seed)
     set_seed(fork2_seed)
-    fork2_env = gym.make(env_name)
+    if num_envs == 1: # not parallel env
+        fork2_env = gym.make(env_name)
+    elif num_envs > 1: # parallel env
+        fork2_env = gym.make_vec(env_name, num_envs=2, vectorization_mode="async")
+    else :
+        raise ValueError(f"num_envs must be 1 or greater, but got {num_envs}.")
+
 
     #TODO: Experiment with what happens if we create a new buffer. De-couple this option "copy_buffer=bool" to experiment yaml config file
     fork2_buffer = deepcopy(buffer)  # Copy the buffer for fork 1
@@ -149,12 +167,12 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     print(f"Training fork 2 (seed: {fork2_seed}) from step {fork_step} to {total_steps}")
     state, _ = fork2_env.reset(seed=fork2_seed)
     for step in range(train_steps):
-        action = fork2_agent.get_action(state)
-        next_state, reward, terminated, truncated, _ = fork2_env.step(action)
-        done = terminated or truncated
+        action = fork2_agent.get_action(state) # if parallel action is a list of actions returned by the model
+        next_state, reward, terminated, truncated, _ = fork2_env.step(action) # if parallel all of these are lists
+        done = terminated or truncated # TODO: Hopefully this is numpy so works out of package, but double check
         
         fork2_buffer.add(state, action, reward, next_state, done)
-        state = next_state if not done else fork2_env.reset()[0]
+        state = next_state if not done else fork2_env.reset()[0] # new states
         
         
         if len(fork2_buffer) > 10000: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
@@ -179,7 +197,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     
     return fork1_agent, fork2_agent
 
-def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, num_eval_episodes=100):
+def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, num_eval_episodes):
     """Analyze instability between two forked agents using linear interpolation."""
     print(f"Analyzing instability for fork {fork_id}")
     
@@ -225,13 +243,19 @@ def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, nu
     return results
 
 def main():
-    args = parse_args()
-    
     # Set device
-    device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    if torch.backends.mps.is_available():
+        print("MPS is available, using it.")
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        print("CUDA is available, using it.")
+        device = torch.device("cuda")
+    else:
+        print("Neither MPS nor CUDA is available, using CPU.")
+        device = torch.device("cpu")
     
     # Load configuration
+    args = parse_args()
     config = load_config(args.config)
     
     # Create experiment directories
@@ -239,24 +263,45 @@ def main():
     
     # Save experiment config
     with open(f"{exp_dir}/config.yaml", 'w') as f:
-        yaml.dump({**config, **vars(args), "max_episode_steps": max_episode_steps, "num_eval_episodes": num_eval_episodes, "alphas": str(alphas.tolist())}, f)
+        yaml.dump({**config, **vars(args), 
+                   "max_episode_steps": max_episode_steps, 
+                   "num_eval_episodes": num_eval_episodes, 
+                   "alphas": str(alphas.tolist())}, f)
     
     # Set random seed
     set_seed(args.seed)
     
     # Create environment and set max episode steps
-    env = gym.make(args.env)
+    if args.num_parallel_env == 1: # not parallel env
+        env = gym.make(args.env)
+    elif args.num_parallel_env > 1: # parallel env
+        env = gym.make_vec(args.env, num_envs=args.num_parallel_env, vectorization_mode="async")
+    else :
+        raise ValueError(f"num_envs must be 1 or greater, but got {args.num_parallel_env}.")
     if args.max_episode_steps > 0:
         env = gym.wrappers.TimeLimit(env, max_episode_steps=args.max_episode_steps)
     
     agent = create_agent(env, args.algo, device)
     
     # Create replay buffer
-    buffer = ReplayBuffer(
-        state_dim=env.observation_space.shape[0],
-        action_dim=env.action_space.shape[0],
-        capacity=int(config.get('buffer_size', DEFAULT_BUFFER_SIZE))
-    )
+
+    if args.num_parallel_env == 1:
+        buffer = ReplayBuffer(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            device=device,
+            capacity=int(config.get('buffer_size', DEFAULT_BUFFER_SIZE))
+        )   
+
+    elif args.num_parallel_env > 1:
+        buffer = ParallelReplayBuffer(
+            state_dim=env.observation_space.shape[0],
+            action_dim=env.action_space.shape[0],
+            num_envs=args.num_parallel_env,
+            capacity=int(config.get('buffer_size', DEFAULT_BUFFER_SIZE)),
+        )
+    else:
+        raise ValueError(f"num_envs must be 1 or greater, but got {args.num_parallel_env}.")
     
     # Parse fork points
     fork_percentages = [float(p) for p in args.fork_points.split(',')]

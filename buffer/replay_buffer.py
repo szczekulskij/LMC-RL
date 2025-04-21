@@ -3,8 +3,6 @@ import numpy as np
 import torch
 from abc import ABC, abstractmethod
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 class ReplayBufferSuperClass(ABC):
     """Abstract base class for replay buffers."""
     @abstractmethod
@@ -42,8 +40,9 @@ class ReplayBuffer(ReplayBufferSuperClass):
     # increases the memory movement between GPU and CPU. 
     # Side-note: Learn more about memory movement on "merged chips" like Apple M1/M2 (it should be lightspeed, no?)
 
-    def __init__(self, state_dim: int, action_dim: int, capacity: int = 1000000):
+    def __init__(self, state_dim: int, action_dim: int, device : torch.device, capacity: int = 1000000):
         self.capacity = capacity
+        self.device = device
         self.ptr = 0        # current index to insert
         self.size = 0       # current number of transitions stored
         # Pre-allocate memory for efficiency
@@ -72,11 +71,11 @@ class ReplayBuffer(ReplayBufferSuperClass):
         assert self.size > 0, "Buffer is empty!"
         batch_indices = np.random.choice(self.size, size=batch_size, replace=False)
         # Convert to tensors for training
-        state_batch = torch.tensor(self.states[batch_indices], dtype=torch.float32).to(device)
-        action_batch = torch.tensor(self.actions[batch_indices], dtype=torch.float32).to(device)
-        reward_batch = torch.tensor(self.rewards[batch_indices], dtype=torch.float32).unsqueeze(1).to(device)
-        next_state_batch = torch.tensor(self.next_states[batch_indices], dtype=torch.float32).to(device)
-        done_batch = torch.tensor(self.dones[batch_indices], dtype=torch.float32).unsqueeze(1).to(device)
+        state_batch = torch.tensor(self.states[batch_indices], dtype=torch.float32).to(self.device)
+        action_batch = torch.tensor(self.actions[batch_indices], dtype=torch.float32).to(self.device)
+        reward_batch = torch.tensor(self.rewards[batch_indices], dtype=torch.float32).unsqueeze(1).to(self.device)
+        next_state_batch = torch.tensor(self.next_states[batch_indices], dtype=torch.float32).to(self.device)
+        done_batch = torch.tensor(self.dones[batch_indices], dtype=torch.float32).unsqueeze(1).to(self.device)
         return state_batch, action_batch, reward_batch, next_state_batch, done_batch
 
     def __len__(self):
@@ -91,7 +90,7 @@ class ReplayBuffer(ReplayBufferSuperClass):
 
 class ParallelReplayBuffer(ReplayBufferSuperClass):
     """Replay buffer for parallel environments."""
-    def __init__(self, state_dim: int, action_dim: int, num_envs: int, capacity: int, device: torch.device):
+    def __init__(self, state_dim: int, action_dim: int, num_envs: int, device: torch.device, capacity: int = 1000000):
         self.capacity = capacity
         self.num_envs = num_envs
         self.device = device
@@ -131,7 +130,7 @@ class ParallelReplayBuffer(ReplayBufferSuperClass):
         self.ptr = (self.ptr + 1) % self.per_env_capacity
         self.size = min(self.size + self.num_envs, self.per_env_capacity)
 
-    def sample(self, batch_size: int):
+    def sample_unflattened(self, batch_size: int):
         """Sample a batch of transitions."""
         batch_indices = np.random.choice(self.size, size=batch_size, replace=False)
         env_indices = torch.randint(0, self.num_envs, (batch_size,))
@@ -143,7 +142,7 @@ class ParallelReplayBuffer(ReplayBufferSuperClass):
             self.dones[batch_indices, env_indices],
         )
     
-    def sample_flattened(self, batch_size: int):
+    def sample(self, batch_size: int):
         """Sample a batch of transitions and flatten the batch dimension."""
         batch_indices = np.random.choice(self.size, size=batch_size, replace=False)
         env_indices = torch.randint(0, self.num_envs, (batch_size,))

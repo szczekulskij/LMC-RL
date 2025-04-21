@@ -133,7 +133,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     for step in range(train_steps):
         action = fork1_agent.get_action(state)
         next_state, reward, terminated, truncated, _ = fork1_env.step(action)
-        done = terminated or truncated
+        done = np.logical_or(terminated, truncated)  # Element-wise OR for arrays
         
         fork1_buffer.add(state, action, reward, next_state, done)
         state = next_state if not done else fork1_env.reset()[0]
@@ -169,7 +169,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     for step in range(train_steps):
         action = fork2_agent.get_action(state) # if parallel action is a list of actions returned by the model
         next_state, reward, terminated, truncated, _ = fork2_env.step(action) # if parallel all of these are lists
-        done = terminated or truncated # TODO: Hopefully this is numpy so works out of package, but double check
+        done = np.logical_or(terminated, truncated)  # Element-wise OR for arrays
         
         fork2_buffer.add(state, action, reward, next_state, done)
         state = next_state if not done else fork2_env.reset()[0] # new states
@@ -275,6 +275,13 @@ def main():
     def make_env():
         return lambda: gym.make(args.env)
 
+
+    # The variables below are not used to actually run env
+    # Rather they're used to populate other clases initializers
+    single_env = gym.make(args.env) 
+    state_space = single_env.observation_space
+    action_space = single_env.action_space
+
     if args.num_parallel_env > 1:
         env = gym.vector.AsyncVectorEnv([make_env() for _ in range(args.num_parallel_env)])
     else:
@@ -284,22 +291,26 @@ def main():
     if args.num_parallel_env == 1 and args.max_episode_steps > 0:
         env = gym.wrappers.TimeLimit(env, max_episode_steps=args.max_episode_steps)
     
-    agent = create_agent(env, args.algo, device)
+    agent = create_agent(gym.make(args.env), args.algo, device)
+
+    print("args and config:")
+    print(args)
+    print(config)
     
     # Create replay buffer
 
     if args.num_parallel_env == 1:
         buffer = ReplayBuffer(
-            state_dim=env.observation_space.shape[0],
-            action_dim=env.action_space.shape[0],
+            state_dim=state_space[0],
+            action_dim=action_space.shape[0],
             device=device,
             capacity=int(config.get('buffer_size', DEFAULT_BUFFER_SIZE))
         )   
 
     elif args.num_parallel_env > 1:
         buffer = ParallelReplayBuffer(
-            state_dim=env.observation_space.shape[0],
-            action_dim=env.action_space.shape[0],
+            state_dim=state_space.shape[0],
+            action_dim=action_space.shape[0],
             num_envs=args.num_parallel_env,
             device=device,
             capacity=int(config.get('buffer_size', DEFAULT_BUFFER_SIZE)),
@@ -313,6 +324,7 @@ def main():
     
     # Initialize variables
     state, _ = env.reset(seed=args.seed)
+    print("shape of state: ", state.shape)
     episode_reward = 0
     episode_timesteps = 0
     episode_num = 0
@@ -353,8 +365,8 @@ def main():
         
         # Perform action
         next_state, reward, terminated, truncated, _ = env.step(action)
-        done = terminated or truncated
-        
+        done = np.logical_or(terminated, truncated)  # Element-wise OR for arrays
+
         # Store data in replay buffer
         buffer.add(state, action, reward, next_state, done)
         
@@ -362,13 +374,10 @@ def main():
         episode_reward += reward
         episode_timesteps += 1
         
-        # Update agent
-        if len(buffer) > 10000: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
-            agent.train_step(buffer)
-        
-        # Reset environment if done
-        if done:
-            state, _ = env.reset()
+        # Reset environment if any environment is done
+        if np.any(done):  # Reset only if at least one environment is done
+            reset_states, _ = env.reset()
+            state = np.where(done[:, None], reset_states, state)  # Replace only the done environments
             episode_reward = 0
             episode_timesteps = 0
             episode_num += 1

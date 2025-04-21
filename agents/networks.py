@@ -35,7 +35,13 @@ class ActorSAC(nn.Module):
             x = F.relu(layer(x))
         mean = self.mean_layer(x)
         log_std = self.log_std_layer(x)
-        # Clamp log_std to reasonable bounds to stabilize training
+
+
+        # TODO: Possibly change to ManiSkill's//Spin up implementation?
+        # https://github.com/haosulab/ManiSkill/blob/main/examples/baselines/sac/sac.py#L232
+        
+        # Could also change the deterministic action sampling to be more like ManiSkill's:
+        # https://github.com/haosulab/ManiSkill/blob/main/examples/baselines/sac/sac.py#L237
         log_std = torch.clamp(log_std, self.log_std_min, self.log_std_max)
         return mean, log_std  # to be used for sampling an action
 
@@ -47,7 +53,7 @@ class Critic(nn.Module):
         dims = [input_dim] + list(hidden_dims)
         layers = []
         for i in range(len(dims)-1):
-            layers += [nn.Linear(dims[i], dims[i+1]), nn.ReLU(inplace=True)]
+            layers += [nn.Linear(dims[i], dims[i+1]), nn.ReLU(inplace=False)] #TODO: Changed, inplace=False - ensure no effect on results
         layers.append(nn.Linear(dims[-1], 1))
         self.model = nn.Sequential(*layers)
     

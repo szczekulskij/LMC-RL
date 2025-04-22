@@ -34,59 +34,47 @@ class ReplayBufferSuperClass(ABC):
 class ReplayBuffer(ReplayBufferSuperClass):
     '''
     Pre-allocate the memory for efficiency.
-    Store as numpy arrays and convert to tensors when sampling for efficiency as well.
+    Store everything as PyTorch tensors directly on the specified device.
     '''
-    #TODO: This should be correct implementation, but think more about whether this uncessarily 
-    # increases the memory movement between GPU and CPU. 
-    # Side-note: Learn more about memory movement on "merged chips" like Apple M1/M2 (it should be lightspeed, no?)
-
-    def __init__(self, state_dim: int, action_dim: int, device : torch.device, capacity: int = 1000000):
+    def __init__(self, state_dim: int, action_dim: int, device: torch.device, capacity: int = 1000000):
         self.capacity = capacity
         self.device = device
         self.ptr = 0        # current index to insert
         self.size = 0       # current number of transitions stored
         # Pre-allocate memory for efficiency
-        self.states = np.zeros((capacity, state_dim), dtype=np.float32)
-        self.actions = np.zeros((capacity, action_dim), dtype=np.float32)
-        self.rewards = np.zeros(capacity, dtype=np.float32)
-        self.next_states = np.zeros((capacity, state_dim), dtype=np.float32)
-        self.dones = np.zeros(capacity, dtype=np.float32)
+        self.states = torch.zeros((capacity, state_dim), dtype=torch.float32, device=device)
+        self.actions = torch.zeros((capacity, action_dim), dtype=torch.float32, device=device)
+        self.rewards = torch.zeros(capacity, dtype=torch.float32, device=device)
+        self.next_states = torch.zeros((capacity, state_dim), dtype=torch.float32, device=device)
+        self.dones = torch.zeros(capacity, dtype=torch.float32, device=device)
     
     def add(self, state, action, reward, next_state, done):
-        #TODO: Double check we don't silently store tensors here rather than numpy
         """Add a transition to the buffer."""
         idx = self.ptr
-        self.states[idx] = state
-        self.actions[idx] = action
-        self.rewards[idx] = reward
-        self.next_states[idx] = next_state
-        self.dones[idx] = 1.0 if done else 0.0  # store done as float (1.0 or 0.0)
+        self.states[idx] = torch.tensor(state, dtype=torch.float32, device=self.device)
+        self.actions[idx] = torch.tensor(action, dtype=torch.float32, device=self.device)
+        self.rewards[idx] = torch.tensor(reward, dtype=torch.float32, device=self.device)
+        self.next_states[idx] = torch.tensor(next_state, dtype=torch.float32, device=self.device)
+        self.dones[idx] = torch.tensor(1.0 if done else 0.0, dtype=torch.float32, device=self.device)
         # Update pointers
         self.ptr = (self.ptr + 1) % self.capacity
         self.size = min(self.size + 1, self.capacity)
     
     def sample(self, batch_size: int):
         """Randomly sample a batch of transitions."""
-        #TODO: Check if we need to add .to(device) in code below
         assert self.size > 0, "Buffer is empty!"
-        batch_indices = np.random.choice(self.size, size=batch_size, replace=False)
-        # Convert to tensors for training
-        state_batch = torch.tensor(self.states[batch_indices], dtype=torch.float32).to(self.device)
-        action_batch = torch.tensor(self.actions[batch_indices], dtype=torch.float32).to(self.device)
-        reward_batch = torch.tensor(self.rewards[batch_indices], dtype=torch.float32).unsqueeze(1).to(self.device)
-        next_state_batch = torch.tensor(self.next_states[batch_indices], dtype=torch.float32).to(self.device)
-        done_batch = torch.tensor(self.dones[batch_indices], dtype=torch.float32).unsqueeze(1).to(self.device)
-        return state_batch, action_batch, reward_batch, next_state_batch, done_batch
+        batch_indices = torch.randint(0, self.size, (batch_size,), device=self.device)
+        return (
+            self.states[batch_indices],
+            self.actions[batch_indices],
+            self.rewards[batch_indices].unsqueeze(1),
+            self.next_states[batch_indices],
+            self.dones[batch_indices].unsqueeze(1),
+        )
 
     def __len__(self):
         """Return the current size of the replay buffer."""
         return self.size
-    
-    def set_seed(self, seed: int):
-        #TODO: Remove set_seed from both replay buffer implementations since it's implemented in the abstarct class
-        """Set the random seed for reproducibility."""
-        np.random.seed(seed)
-        torch.manual_seed(seed)
 
 class ParallelReplayBuffer(ReplayBufferSuperClass):
     """Replay buffer for parallel environments."""
@@ -94,6 +82,8 @@ class ParallelReplayBuffer(ReplayBufferSuperClass):
         self.capacity = capacity
         self.num_envs = num_envs
         self.device = device
+        self.state_dim = state_dim
+        self.action_dim = action_dim
 
         self.per_env_capacity = capacity // num_envs
         print(f"Per env buffer size is: {self.per_env_capacity} given buffer size {capacity} and num_envs {num_envs}")
@@ -106,19 +96,26 @@ class ParallelReplayBuffer(ReplayBufferSuperClass):
         self.ptr = 0
         self.size = 0  # Initialize size to track the number of transitions
 
-    def add(self, states, next_states, actions, rewards, dones):
+    def add(self, states, actions, rewards, next_states, dones):
         """Add transitions for parallel environments."""
-        # check that all inputs are of the same shape eg. envs x state_dim
-        for arr in [states, next_states, actions, rewards, dones]:
-            assert arr.shape[0] == self.num_envs, f"Expected {self.num_envs} environments, but got {arr.shape[0]}."
+        # Convert inputs to PyTorch tensors on the correct device
+        states = torch.tensor(states, dtype=torch.float32, device=self.device)
+        actions = torch.tensor(actions, dtype=torch.float32, device=self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device)
+        next_states = torch.tensor(next_states, dtype=torch.float32, device=self.device)
+        dones = torch.tensor(dones, dtype=torch.float32, device=self.device)
 
-        assert states.shape[1] == self.states.shape[2], f"Expected state_dim {self.states.shape[2]}, but got {states.shape[1]}."
-        assert next_states.shape[1] == self.next_states.shape[2], f"Expected state_dim {self.next_states.shape[2]}, but got {next_states.shape[1]}."
-        assert actions.shape[1] == self.actions.shape[2], f"Expected action_dim {self.actions.shape[2]}, but got {actions.shape[1]}."
-        assert rewards.shape[1] == self.rewards.shape[1], f"Expected num_envs {self.rewards.shape[1]}, but got {rewards.shape[1]}."
-        assert dones.shape[1] == self.dones.shape[1], f"Expected num_envs {self.dones.shape[1]}, but got {dones.shape[1]}."
+        # Check that all inputs are of the correct shape
+        assert states.shape[1] == self.state_dim, f"For states input, expected state_dim {self.state_dim}, but got {states.shape[1]}."
+        assert states.shape[0] == self.num_envs, f"For states input, expected num_envs {self.num_envs}, but got {states.shape[0]}."
+        assert next_states.shape[1] == self.state_dim, f"For next_states input, expected state_dim {self.state_dim}, but got {next_states.shape[1]}."
+        assert next_states.shape[0] == self.num_envs, f"For next_states input, expected num_envs {self.num_envs}, but got {next_states.shape[0]}."
+        assert actions.shape[1] == self.action_dim, f"For actions input, expected action_dim {self.action_dim}, but got {actions.shape[1]}."
+        assert actions.shape[0] == self.num_envs, f"For actions input, expected num_envs {self.num_envs}, but got {actions.shape[0]}."
+        assert rewards.shape[0] == self.num_envs, f"For rewards input, expected num_envs {self.num_envs}, but got {rewards.shape[0]}."
+        assert dones.shape[0] == self.num_envs, f"For dones input, expected num_envs {self.num_envs}, but got {dones.shape[0]}."
 
-
+        # Add transitions to the buffer
         idx = self.ptr
         self.states[idx] = states
         self.next_states[idx] = next_states
@@ -126,7 +123,7 @@ class ParallelReplayBuffer(ReplayBufferSuperClass):
         self.rewards[idx] = rewards
         self.dones[idx] = dones
 
-        
+        # Update pointers
         self.ptr = (self.ptr + 1) % self.per_env_capacity
         self.size = min(self.size + self.num_envs, self.per_env_capacity)
 
@@ -161,8 +158,3 @@ class ParallelReplayBuffer(ReplayBufferSuperClass):
     def __len__(self):
         """Return the current size of the replay buffer."""
         return self.size
-    
-    def set_seed(self, seed: int):
-        """Set the random seed for reproducibility."""
-        np.random.seed(seed)
-        torch.manual_seed(seed)

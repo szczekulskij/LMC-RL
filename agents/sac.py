@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 
 class SACAgent(RLAgentSuperClass):
-    def __init__(self, state_dim, action_dim, config_path="configs/default_sac.yaml", device='cpu'):
+    def __init__(self, state_dim, action_dim, config_path="configs/default_sac.yaml", device='cpu', sample_batch_size=1024):
         self.algo_name = "SAC"
         super().__init__()  # Call the superclass constructor to enforce algo_name check
         # Load hyperparameters from YAML
@@ -17,6 +17,7 @@ class SACAgent(RLAgentSuperClass):
         self.tau = float(config["tau"])
         self.alpha = float(config["alpha"])
         self.device = device  # Store the device
+        self.sample_batch_size = sample_batch_size
 
         # Networks
         hidden_dims = [int(dim) for dim in config["hidden_dims"]]  # Ensure hidden_dims are integers
@@ -49,11 +50,11 @@ class SACAgent(RLAgentSuperClass):
             action = torch.tanh(u)          # apply squashing
         return action.detach().cpu().numpy()
     
-    def train_step(self, replay_buffer, batch_size=256):
+    def train_step(self, replay_buffer):
         #TODO: De-couple batch_size to config file (do the same for DDPG)
         # Batch size of 256 as per SpinningUp
         """One SAC training step on a batch."""
-        states, actions, rewards, next_states, dones = replay_buffer.sample(batch_size)
+        states, actions, rewards, next_states, dones = replay_buffer.sample(self.sample_batch_size)
         states, actions, rewards, next_states, dones = (
             states.to(self.device), actions.to(self.device), rewards.to(self.device),
             next_states.to(self.device), dones.to(self.device)

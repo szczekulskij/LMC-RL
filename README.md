@@ -1,6 +1,9 @@
 # LMC-RL
 Researching Linear Mode Connectivity in RL
 
+## Requirements (newly added on new laptop self-note):
+* 
+
 ## 📁 Repo structure
 ```
 lmc_rl/

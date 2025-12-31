@@ -57,6 +57,9 @@ def parse_args():
                         help='Path to config file')
     parser.add_argument('--max_episode_steps', type=int, default=DEFAULT_MAX_EPISODE_STEPS, 
                         help='Maximum number of steps per episode')
+    parser.add_argument('--fork_buffer_strategy', type=str, default='copy', 
+                        choices=['copy', 'fresh', 'shared', 'split'],
+                        help='Buffer handling strategy for forks: copy (default), fresh, shared, split')
     return parser.parse_args()
 
 def load_config(config_path=None):
@@ -102,7 +105,7 @@ def create_agent(env, algo, device):
     else:
         raise ValueError(f"Unsupported algorithm: {algo}")
 
-def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, device, buffer, total_steps):
+def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, device, buffer, total_steps, fork_buffer_strategy="copy"):
     """Fork agent training and train with different noise that comes from different seeds."""
     print(f"Forking at step {fork_step} (ID: {fork_id})")
     
@@ -118,13 +121,46 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     fork1_seed = fork_id + 10000
     fork2_seed = fork_id + 20000
     
+    # Handle buffer strategy for forks
+    if fork_buffer_strategy == "copy":
+        # Both forks get identical copies of the original buffer
+        fork1_buffer = deepcopy(buffer)
+        fork2_buffer = deepcopy(buffer)
+    elif fork_buffer_strategy == "fresh":
+        # Both forks start with empty buffers
+        fork1_buffer = ReplayBuffer(
+            state_dim=buffer.state_dim,
+            action_dim=buffer.action_dim,
+            capacity=buffer.capacity
+        )
+        fork2_buffer = ReplayBuffer(
+            state_dim=buffer.state_dim,
+            action_dim=buffer.action_dim,
+            capacity=buffer.capacity
+        )
+    elif fork_buffer_strategy == "shared":
+        # Both forks use the same buffer (shared experience)
+        fork1_buffer = buffer
+        fork2_buffer = buffer
+    elif fork_buffer_strategy == "split":
+        # Split the original buffer between the two forks
+        fork1_buffer = deepcopy(buffer)
+        fork2_buffer = deepcopy(buffer)
+        # TODO: Implement actual buffer splitting logic
+        # This would require modifying ReplayBuffer to support splitting
+        print("WARNING: 'split' buffer strategy not fully implemented yet, using 'copy' instead")
+    else:
+        raise ValueError(f"Unknown fork_buffer_strategy: {fork_buffer_strategy}")
+    
+    # Set seeds for buffers if they support it (only for non-shared buffers)
+    if fork_buffer_strategy != "shared":
+        if hasattr(fork1_buffer, 'set_seed'):
+            fork1_buffer.set_seed(fork1_seed)
+        if hasattr(fork2_buffer, 'set_seed'):
+            fork2_buffer.set_seed(fork2_seed)
     # Train fork 1
     set_seed(fork1_seed)
     fork1_env = gym.make(env_name)
-    fork1_buffer = deepcopy(buffer)  # Copy the buffer for fork 1
-    fork1_buffer.set_seed(fork1_seed)  # Set seed for the buffer if needed
-    
-    total_steps = int(total_steps) #TODO: Fit upstream
     print(f"Training fork 1 (seed: {fork1_seed}) from step {fork_step} to {total_steps}")
     train_steps = int(total_steps - fork_step)
     state, _ = fork1_env.reset(seed=fork1_seed)
@@ -148,13 +184,11 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
             evaluation_rewards = evaluate_policy(fork1_agent, fork1_env, episodes=3)
             print(f"Fork 1 (ID: {fork_id}) evaluation reward: {np.mean(evaluation_rewards):.3f}")
     
+    
+    total_steps = int(total_steps) #TODO: Fix to int upstream
     # Train fork 2 (similar to fork 1 but with different seed)
     set_seed(fork2_seed)
     fork2_env = gym.make(env_name)
-
-    #TODO: Experiment with what happens if we create a new buffer. De-couple this option "copy_buffer=bool" to experiment yaml config file
-    fork2_buffer = deepcopy(buffer)  # Copy the buffer for fork 1
-    fork2_buffer.set_seed(fork2_seed)  # Set seed for the buffer if needed
     
     print(f"Training fork 2 (seed: {fork2_seed}) from step {fork_step} to {total_steps}")
     state, _ = fork2_env.reset(seed=fork2_seed)
@@ -166,7 +200,6 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         fork2_buffer.add(state, action, reward, next_state, done)
         state = next_state if not done else fork2_env.reset()[0]
         
-        
         if len(fork2_buffer) > 10000 and step % TRAIN_FREQ == 0: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
             fork2_agent.train_step(fork2_buffer)
         
@@ -174,6 +207,10 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
             state, _ = fork2_env.reset()
         
         # Print progress for fork 2
+        if step % (train_steps // 1000) == 0:  # Print every 10% of progress
+            print(f"Fork 2 (ID: {fork_id}): {step / train_steps:.1%} completed")
+            rewards_eval = evaluate_policy(fork2_agent, fork2_env, episodes=3)
+            print(f"Fork 2 (ID: {fork_id}) evaluation reward: {np.mean(rewards_eval):.3f}")
         if step % (train_steps // 1000) == 0:  # Print every 10% of progress
             print(f"Fork 2 (ID: {fork_id}): {step / train_steps:.1%} completed")
             rewards_eval = evaluate_policy(fork2_agent, fork2_env, episodes=3)
@@ -253,8 +290,17 @@ def main():
     exp_dir, weights_dir = create_experiment_dir(args.env, args.algo, args.seed, config.get('experiment_name', 'NoExperimentNameGiven'))
     
     # Save experiment config
+    config_to_save = {
+        **config, 
+        **vars(args), 
+        "max_episode_steps": max_episode_steps, 
+        "num_eval_episodes": num_eval_episodes, 
+        "alphas": alphas.tolist(),  # Save as proper list, not string
+        "fork_buffer_strategy": args.fork_buffer_strategy  # Ensure this is included
+    }
+    
     with open(f"{exp_dir}/config.yaml", 'w') as f:
-        yaml.dump({**config, **vars(args), "max_episode_steps": max_episode_steps, "num_eval_episodes": num_eval_episodes, "alphas": str(alphas.tolist())}, f)
+        yaml.dump(config_to_save, f, default_flow_style=False, indent=2)
     
     # Set random seed
     set_seed(args.seed)
@@ -302,7 +348,8 @@ def main():
                                                      weights_dir = weights_dir, 
                                                      device = device, 
                                                      buffer = buffer, 
-                                                     total_steps = args.total_steps
+                                                     total_steps = args.total_steps,
+                                                     fork_buffer_strategy = args.fork_buffer_strategy
                                                     )
             
             # Analyze instability between the forks
@@ -366,7 +413,7 @@ def main():
 
     # Append running_time to config.yaml
     with open(f"{exp_dir}/config.yaml", 'a') as f:
-        yaml.dump({"running_time": running_time}, f)
+        yaml.dump({"running_time": running_time}, f, default_flow_style=False, indent=2)
     
     print(f"Training complete. Results saved to {exp_dir}")
 

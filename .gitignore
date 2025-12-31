@@ -179,3 +179,4 @@ cython_debug/
 *ww___deprecated
 *.DS_Store
 *.kiro
+README_me.md

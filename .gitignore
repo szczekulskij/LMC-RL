@@ -180,3 +180,4 @@ cython_debug/
 *.DS_Store
 *.kiro
 README_me.md
+*nohup*

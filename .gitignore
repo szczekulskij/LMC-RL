@@ -177,3 +177,7 @@ cython_debug/
 *results
 *wrong_results
 *ww___deprecated
+*.DS_Store
+*.kiro
+README_me.md
+*nohup*

@@ -13,7 +13,12 @@ from utils.seed import set_seed
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Device configuration: use MPS if available (on Apple silicon Macs)
-device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+if torch.backends.mps.is_available():
+    device = torch.device("mps") 
+elif torch.cuda.is_available():
+    device = torch.device("cuda") 
+else:
+    device = torch.device("cpu") 
 print(f"Using device: {device}")  # e.g., prints "Using device: mps" on an M1/M2 Mac
 
 

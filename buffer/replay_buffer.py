@@ -2,7 +2,12 @@ import collections
 import numpy as np
 import torch
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch.backends.mps.is_available():
+    device = torch.device("mps") 
+elif torch.cuda.is_available():
+    device = torch.device("cuda") 
+else:
+    device = torch.device("cpu") 
 
 class ReplayBuffer:
     '''
@@ -23,6 +28,8 @@ class ReplayBuffer:
         self.rewards = np.zeros(capacity, dtype=np.float32)
         self.next_states = np.zeros((capacity, state_dim), dtype=np.float32)
         self.dones = np.zeros(capacity, dtype=np.float32)
+        self.state_dim = state_dim
+        self.action_dim = action_dim
     
     def add(self, state, action, reward, next_state, done):
         #TODO: Double check we don't silently store tensors here rather than numpy

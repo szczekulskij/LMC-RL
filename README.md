@@ -28,20 +28,20 @@ python3 -u -m core.check_run 2>&1 | tee logs/runtime_logs.txt
 **Full LMC experiments:**
 ```bash
 # Basic experiment with default settings
-python3 -m experiments.run_env --env InvertedDoublePendulum-v5 --algo SAC --seed 42
+python3 -m core.run_env --env InvertedDoublePendulum-v5 --algo SAC --seed 42
 
 # Custom fork points
-python3 -m experiments.run_env --fork_points "0.1,0.3,0.5,0.7,0.9" --env Hopper-v5 --algo DDPG
+python3 -m core.run_env --fork_points "0.1,0.3,0.5,0.7,0.9" --env Hopper-v5 --algo DDPG
 
 # Longer training with custom evaluation frequency
-python3 -m experiments.run_env --total_steps 500000 --eval_freq 2000 --env HalfCheetah-v5
+python3 -m core.run_env --total_steps 500000 --eval_freq 2000 --env HalfCheetah-v5
 
 # Test different buffer strategies for forks
-python3 -m experiments.run_env --env InvertedDoublePendulum-v5 --algo SAC --fork_buffer_strategy fresh
+python3 -m core.run_env --env InvertedDoublePendulum-v5 --algo SAC --fork_buffer_strategy fresh
 
 # Compare buffer strategies with same seed for reproducible comparison
-python3 -m experiments.run_env --env Hopper-v5 --algo SAC --seed 42 --fork_buffer_strategy copy
-python3 -m experiments.run_env --env Hopper-v5 --algo SAC --seed 42 --fork_buffer_strategy fresh
+python3 -m core.run_env --env Hopper-v5 --algo SAC --seed 42 --fork_buffer_strategy copy
+python3 -m core.run_env --env Hopper-v5 --algo SAC --seed 42 --fork_buffer_strategy fresh
 ```
 
 **Available options:**
@@ -61,10 +61,10 @@ python3 -m experiments.run_env --env Hopper-v5 --algo SAC --seed 42 --fork_buffe
 **Analyze fork results and generate plots:**
 ```bash
 # Basic analysis - specify the experiment results directory
-python3 -m experiments.analyze --results_dir results/base/InvertedDoublePendulum-v5/SAC/seed_42_20241231_143022
+python3 -m core.analyze --results_dir results/base/InvertedDoublePendulum-v5/SAC/seed_42_20241231_143022
 
 # With custom total steps (for proper time scaling)
-python3 -m experiments.analyze --results_dir results/base/Hopper-v5/DDPG/seed_123_20241231_150000 --total_steps 500000
+python3 -m core.analyze --results_dir results/base/Hopper-v5/DDPG/seed_123_20241231_150000 --total_steps 500000
 
 # Find your results directory
 ls results/base/  # List environments
@@ -91,7 +91,7 @@ When running experiments without specifying parameters, the following defaults a
 --max_episode_steps 1000           # Max steps per episode
 --fork_points "0.01,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8"  # Fork percentages
 --fork_buffer_strategy copy        # Buffer handling: copy, fresh, shared, split
---config experiments/experiment_default_config.yaml          # Default config
+--config core/experiment_default_config.yaml          # Default config
 
 # Default config file settings (experiment_default_config.yaml)
 buffer_size: 1000000               # Replay buffer capacity
@@ -131,10 +131,10 @@ Experiments can be configured via YAML files in `configs/` or command-line argum
 
 ```bash
 # Using custom config file
-python -m experiments.run_env --config my_experiment.yaml
+python -m core.run_env --config my_experiment.yaml
 
 # Command-line overrides
-python -m experiments.run_env --env Swimmer-v5 --algo SAC --seed 123 --total_steps 200000
+python -m core.run_env --env Swimmer-v5 --algo SAC --seed 123 --total_steps 200000
 ```
 
 ### Results
@@ -158,8 +158,12 @@ lmc_rl/
 │   └── replay_buffer.py     # ReplayBuffer class with optional save/load
 │
 ├── core/
-│   ├── train.py             # Core training loop with forking logic
-│   ├── evaluate.py          # Instability calculations and policy evaluation
+│   ├── check_run.py         # Quick multi-seed training script
+│   ├── evaluate.py          # Policy evaluation and instability metrics
+│   ├── run_env.py           # Primary experiment script with forking
+│   ├── analyze.py           # Results analysis and plotting
+│   ├── one_off_analyses.py  # Ad-hoc analysis scripts
+│   └── experiment_default_config.yaml  # Experiment settings
 │
 ├── utils/
 │   └── seed.py              # Global seeding utilities for reproducibility

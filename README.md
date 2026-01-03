@@ -178,8 +178,6 @@ lmc_rl/
 │
 ├── logs/                    # TensorBoard or CSV logs (auto-created)
 │
-├── model_weights/           # Saved agent checkpoints at fork/final
-│
 ├── results/                 # Saved interpolation metrics (e.g., JSON/CSV/plots)
 │
 ├── requirements_metal.txt   # All Python dependencies (PyTorch for metal)

@@ -16,62 +16,47 @@ from core.evaluate import evaluate_policy, linear_interpolation_policy
 from utils.seed import set_seed
 import random
 
-# Half-Cheeath
-# based on what I saw in Levine's presentation this might even have to be 1e9
-# DEFAULT_TOTAL_STEPS = int(3e6 * 0.7) # Based on a single experiment I ran, it took 0.7 to converge to ~4k +. Limiting the running time so it won't run for next 2 week
-
-
-# Trying out Swimmer-v5
-DEFAULT_TOTAL_STEPS = 5e5 // 2.5
-
-# Double Inverted Pendulum
-# DEFAULT_TOTAL_STEPS = 5e5 // 10 # based on my few runs, it trains on invertedPentulum too fast, so I set it to 1/10th of the original
-DEFAULT_BUFFER_SIZE = 1e6
-DEFAULT_EVAL_FREQ = 1000
-DEFAULT_MAX_EPISODE_STEPS = 1000
-TRAIN_FREQ = 2
-
-# Hyperparameters
-max_episode_steps = 1000
-num_eval_episodes = 10
-# alphas = np.linspace(0, 1, 101) # alphas for linear interpolation
-alphas = np.linspace(0, 1, 20) # alphas for linear interpolation
-
-# Default fork points
-# default_fork_points = ','.join([str(i/100) for i in range(0, 101, 10)])
-default_fork_points = '0.01,0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8'
-
 def parse_args():
+    default_config_path = 'core/experiment_default_config.yaml'
+    with open(default_config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    
     parser = argparse.ArgumentParser(description='Run LMC-RL experiments')
-    parser.add_argument('--env', type=str, default='InvertedDoublePendulum-v5', 
+    # All experiment_default_config.yaml parameters can be overridden from command line
+    parser.add_argument('--env', type=str, default=config['defaults']['env'], 
                         help='Gymnasium environment name')
-    parser.add_argument('--algo', type=str, default='SAC', choices=['SAC', 'DDPG'],
+    parser.add_argument('--algo', type=str, default=config['defaults']['algo'], choices=['SAC', 'DDPG'],
                         help='RL algorithm to use')
     parser.add_argument('--seed', type=int, default=random.randint(1, 1000000), help='Random seed')
-    parser.add_argument('--total_steps', type=int, default=DEFAULT_TOTAL_STEPS, 
+    parser.add_argument('--total_steps', type=int, default=int(config['total_steps']), 
                         help='Total training steps')
-    parser.add_argument('--eval_freq', type=int, default=DEFAULT_EVAL_FREQ, 
+    parser.add_argument('--eval_freq', type=int, default=config['eval_freq'], 
                         help='Evaluation frequency')
-    parser.add_argument('--fork_points', type=str, default=default_fork_points,
+    parser.add_argument('--max_episode_steps', type=int, default=config['max_episode_steps'], 
+                        help='Maximum number of steps per episode')
+    parser.add_argument('--fork_points', type=str, default=config['default_fork_points'],
                         help='Comma-separated list of percentages of training to fork at')
+    parser.add_argument('--fork_buffer_strategy', type=str, default=config['defaults']['fork_buffer_strategy'], 
+                        choices=['copy', 'fresh', 'shared', 'split'],
+                        help='Buffer handling strategy for forks')
+    
+    # Config parameters that can be overridden
+    parser.add_argument('--buffer_size', type=int, default=config['buffer_size'],
+                        help='Replay buffer size')
+    parser.add_argument('--train_freq', type=int, default=config['train_freq'],
+                        help='Training frequency (every N steps)')
+    parser.add_argument('--num_eval_episodes', type=int, default=config['num_eval_episodes'],
+                        help='Number of episodes for evaluation')
+    parser.add_argument('--alpha_points', type=int, default=config['alpha_points'],
+                        help='Number of alpha points for linear interpolation')
+    parser.add_argument('--experiment_name', type=str, default=config['experiment_name'],
+                        help='Experiment name for organizing results')
+    
+    # Config file override
     parser.add_argument('--config', type=str, default=None,
                         help='Path to config file')
-    parser.add_argument('--max_episode_steps', type=int, default=DEFAULT_MAX_EPISODE_STEPS, 
-                        help='Maximum number of steps per episode')
-    parser.add_argument('--fork_buffer_strategy', type=str, default='copy', 
-                        choices=['copy', 'fresh', 'shared', 'split'],
-                        help='Buffer handling strategy for forks: copy (default), fresh, shared, split')
-    return parser.parse_args()
-
-def load_config(config_path=None):
-    """Load configuration from file or use default."""
-    if config_path is not None:
-        with open(config_path, 'r') as f:
-            return yaml.safe_load(f)
     
-    default_config_path = f'experiments/experiment_default_config.yaml'
-    with open(default_config_path, 'r') as f:
-        return yaml.safe_load(f)
+    return parser.parse_args()
 
 def create_experiment_dir(env_name, algo, seed, experiment_name=None):
     """Create directories for saving experiment results."""
@@ -106,7 +91,7 @@ def create_agent(env, algo, device):
     else:
         raise ValueError(f"Unsupported algorithm: {algo}")
 
-def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, device, buffer, total_steps, fork_buffer_strategy="copy"):
+def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, device, buffer, total_steps, fork_buffer_strategy, args):
     """Fork agent training and train with different noise that comes from different seeds."""
     print(f"Forking at step {fork_step} (ID: {fork_id})")
     
@@ -173,7 +158,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         fork1_buffer.add(state, action, reward, next_state, done)
         state = next_state if not done else fork1_env.reset()[0]
         
-        if len(fork1_buffer) > 10000 and step % TRAIN_FREQ == 0: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
+        if len(fork1_buffer) > 10000 and step % args.train_freq == 0: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
             fork1_agent.train_step(fork1_buffer)
         
         if done:
@@ -201,7 +186,7 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
         fork2_buffer.add(state, action, reward, next_state, done)
         state = next_state if not done else fork2_env.reset()[0]
         
-        if len(fork2_buffer) > 10000 and step % TRAIN_FREQ == 0: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
+        if len(fork2_buffer) > 10000 and step % args.train_freq == 0: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
             fork2_agent.train_step(fork2_buffer)
         
         if done:
@@ -223,12 +208,16 @@ def fork_training(env_name, agent, algo_name, fork_step, fork_id, weights_dir, d
     
     return fork1_agent, fork2_agent
 
-def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, fork_point, num_eval_episodes=100):
+def analyze_instability(env_name, fork1_agent, fork2_agent, exp_dir, fork_id, fork_point, args):
     """Analyze instability between two forked agents using linear interpolation."""
     print(f"Analyzing instability for fork {fork_id}")
     
     # Create evaluation environment
     eval_env = gym.make(env_name)
+    
+    # Get evaluation parameters from args
+    num_eval_episodes = args.num_eval_episodes
+    alphas = np.linspace(0, 1, args.alpha_points)
     
     # Evaluate individual agents
     fork1_rewards = evaluate_policy(fork1_agent, eval_env, episodes=num_eval_episodes)
@@ -282,24 +271,51 @@ def main():
         device = torch.device("cpu") 
     print(f"Using device: {device}")
     
-    # Load configuration
-    config = load_config(args.config)
-    
     # Create experiment directories
-    exp_dir, weights_dir = create_experiment_dir(args.env, args.algo, args.seed, config.get('experiment_name', 'NoExperimentNameGiven'))
+    exp_dir, weights_dir = create_experiment_dir(args.env, args.algo, args.seed, args.experiment_name)
+    print(f"Will save all models, results, and etc. within {exp_dir}")
     
-    # Save experiment config
+    # Create config to save - only the actual values used in the experiment
     config_to_save = {
-        **config, 
-        **vars(args), 
-        "max_episode_steps": max_episode_steps, 
-        "num_eval_episodes": num_eval_episodes, 
-        "alphas": alphas.tolist(),  # Save as proper list, not string
-        "fork_buffer_strategy": args.fork_buffer_strategy  # Ensure this is included
+        # Core experiment parameters (actual values used)
+        "env": args.env,
+        "algo": args.algo,
+        "seed": args.seed,
+        "total_steps": args.total_steps,
+        "eval_freq": args.eval_freq,
+        "max_episode_steps": args.max_episode_steps,
+        "fork_points": args.fork_points,
+        "fork_buffer_strategy": args.fork_buffer_strategy,
+        
+        # Training parameters
+        "buffer_size": args.buffer_size,
+        "train_freq": args.train_freq,
+        "num_eval_episodes": args.num_eval_episodes,
+        "alpha_points": args.alpha_points,
+        "alphas": [round(x, 2) for x in np.linspace(0, 1, args.alpha_points).tolist()],
+        
+        # Experiment metadata
+        "experiment_name": args.experiment_name
     }
     
-    with open(f"{exp_dir}/config.yaml", 'w') as f:
-        yaml.dump(config_to_save, f, default_flow_style=False, indent=2)
+    # Save config as JSON with alphas inline
+    with open(f"{exp_dir}/config.json", 'w') as f:
+        # First save normally to get the structure
+        json_str = json.dumps(config_to_save, indent=2)
+        
+        # Find the alphas array and make it inline
+        import re
+        # Replace the multi-line alphas array with inline version
+        alphas_pattern = r'"alphas": \[\s*([^]]+)\s*\]'
+        alphas_match = re.search(alphas_pattern, json_str, re.DOTALL)
+        if alphas_match:
+            # Extract the numbers and format them inline
+            alphas_content = alphas_match.group(1)
+            numbers = re.findall(r'[\d.]+', alphas_content)
+            inline_alphas = '[' + ','.join(numbers) + ']'
+            json_str = re.sub(alphas_pattern, f'"alphas": {inline_alphas}', json_str, flags=re.DOTALL)
+        
+        f.write(json_str)
     
     # Set random seed
     set_seed(args.seed)
@@ -315,7 +331,7 @@ def main():
     buffer = ReplayBuffer(
         state_dim=env.observation_space.shape[0],
         action_dim=env.action_space.shape[0],
-        capacity=int(config.get('buffer_size', DEFAULT_BUFFER_SIZE))
+        capacity=int(args.buffer_size)
     )
     
     # Parse fork points
@@ -348,11 +364,12 @@ def main():
                                                      device = device, 
                                                      buffer = buffer, 
                                                      total_steps = args.total_steps,
-                                                     fork_buffer_strategy = args.fork_buffer_strategy
+                                                     fork_buffer_strategy = args.fork_buffer_strategy,
+                                                     args = args
                                                     )
             
             # Analyze instability between the forks
-            fork_result = analyze_instability(args.env, fork1_agent, fork2_agent, exp_dir, fork_id, fork_point=t/args.total_steps)
+            fork_result = analyze_instability(args.env, fork1_agent, fork2_agent, exp_dir, fork_id, fork_point=t/args.total_steps, args=args)
             all_fork_results.append(fork_result)
             
             # Print stability result
@@ -374,7 +391,7 @@ def main():
         episode_timesteps += 1
         
         # Update agent
-        if len(buffer) > 10000 and t % TRAIN_FREQ == 0: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
+        if len(buffer) > 10000 and t % args.train_freq == 0: # SpinningUp suggests 10000 to "prevent learning from super sparse experience"
             agent.train_step(buffer)
         
         # Reset environment if done
@@ -410,9 +427,27 @@ def main():
     end_time = time.time()
     running_time = end_time - start_time
 
-    # Append running_time to config.yaml
-    with open(f"{exp_dir}/config.yaml", 'a') as f:
-        yaml.dump({"running_time": running_time}, f, default_flow_style=False, indent=2)
+    # Add running_time to config.json
+    with open(f"{exp_dir}/config.json", 'r') as f:
+        config_data = json.load(f)
+    
+    config_data["running_time"] = running_time
+    
+    # Save with alphas inline formatting
+    with open(f"{exp_dir}/config.json", 'w') as f:
+        json_str = json.dumps(config_data, indent=2)
+        
+        # Find the alphas array and make it inline
+        import re
+        alphas_pattern = r'"alphas": \[\s*([^]]+)\s*\]'
+        alphas_match = re.search(alphas_pattern, json_str, re.DOTALL)
+        if alphas_match:
+            alphas_content = alphas_match.group(1)
+            numbers = re.findall(r'[\d.]+', alphas_content)
+            inline_alphas = '[' + ','.join(numbers) + ']'
+            json_str = re.sub(alphas_pattern, f'"alphas": {inline_alphas}', json_str, flags=re.DOTALL)
+        
+        f.write(json_str)
     
     print(f"Training complete. Results saved to {exp_dir}")
 
